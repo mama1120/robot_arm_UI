@@ -1,0 +1,3 @@
+bool request_pose
+---
+float64[7] pose_values

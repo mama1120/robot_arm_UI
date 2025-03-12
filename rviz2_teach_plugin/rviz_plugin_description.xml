@@ -1,0 +1,9 @@
+<library path="librviz2_teach_plugin">
+  <class name="rviz_teach_plugin/CustomPlugin"
+         type="rviz_teach_plugin::CustomPlugin"
+         base_class_type="rviz_common::Panel">
+    <description>
+      A custom RViz plugin for teaching.
+    </description>
+  </class>
+</library>
