@@ -12,6 +12,8 @@ find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(moveit_visual_tools REQUIRED)
 find_package(example_interfaces REQUIRED)
+find_package(rviz_services REQUIRED)
+
 
 # Include directories
 include_directories(include)
@@ -69,6 +71,13 @@ ament_target_dependencies(
   "moveit_ros_planning_interface"
   "rclcpp"
   example_interfaces
+)
+
+target_link_libraries(move_X_Z
+  rviz_services::rviz_services__rosidl_typesupport_cpp
+)
+include_directories(
+  ${rviz_services_INCLUDE_DIRS}
 )
 
 

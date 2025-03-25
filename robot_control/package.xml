@@ -10,6 +10,7 @@
   <buildtool_depend>ament_cmake</buildtool_depend>
 
   <depend>moveit_ros_planning_interface</depend>
+  <depend>rviz_services</depend>
   <member_of_group>rosidl_interface_packages</member_of_group>
   <depend>rclcpp</depend>
   <build_depend>sensor_msgs</build_depend>
