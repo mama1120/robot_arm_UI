@@ -20,6 +20,7 @@
 #include <random>
 #include <QComboBox>
 #include "std_srvs/srv/set_bool.hpp"
+#include "rviz_services/srv/move_linear.hpp"
 #include <thread>
 
 namespace rviz_teach_plugin
@@ -39,8 +40,7 @@ public:
     double movement_step_size_;
 
     // Service clients for X, Z, and Home movements
-    rclcpp::Client<std_srvs::srv::SetBool>::SharedPtr move_x_client_;
-    rclcpp::Client<std_srvs::srv::SetBool>::SharedPtr move_z_client_;
+    rclcpp::Client<rviz_services::srv::MoveLinear>::SharedPtr move_linear_client_;
     rclcpp::Client<std_srvs::srv::SetBool>::SharedPtr home_client_;
 
   CustomPlugin(QWidget *parent = nullptr)
@@ -50,8 +50,7 @@ public:
     pose_publisher_ = node_->create_publisher<geometry_msgs::msg::PoseStamped>("move_robot", 10);
 
     // Create service clients
-    move_x_client_ = node_->create_client<std_srvs::srv::SetBool>("move_x");
-    move_z_client_ = node_->create_client<std_srvs::srv::SetBool>("move_z");
+    move_linear_client_ = node_->create_client<rviz_services::srv::MoveLinear>("move_linear");
     home_client_ = node_->create_client<std_srvs::srv::SetBool>("move_to_home");
 
     auto *tab_widget = new QTabWidget;
@@ -140,7 +139,11 @@ public:
     auto *step_size_label = new QLabel("Step Size:");
     auto *step_size_dropdown = new QComboBox;
     step_size_dropdown->addItem("1mm", 1.0);
+    step_size_dropdown->addItem("5mm", 5.0);
     step_size_dropdown->addItem("10mm", 10.0);
+    step_size_dropdown->addItem("20mm", 20.0);
+    step_size_dropdown->addItem("50mm", 50.0);
+    step_size_dropdown->setCurrentIndex(2);
 
     step_size_layout->addWidget(step_size_label);
     step_size_layout->addWidget(step_size_dropdown);
@@ -199,10 +202,12 @@ public:
     connect(step_size_dropdown, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &CustomPlugin::setStepSize);
 
     // Connect movement buttons
-    connect(move_x_button, &QPushButton::clicked, this, [this]() { sendMovementRequest("move_x", true); });
-    connect(move_x_neg_button, &QPushButton::clicked, this, [this]() { sendMovementRequest("move_x", false); });
-    connect(move_z_button, &QPushButton::clicked, this, [this]() { sendMovementRequest("move_z", true); });
-    connect(move_z_neg_button, &QPushButton::clicked, this, [this]() { sendMovementRequest("move_z", false); });
+    connect(teach_button, &QPushButton::clicked, this, &CustomPlugin::onTeachPoint);
+    connect(step_size_dropdown, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &CustomPlugin::setStepSize);
+    connect(move_x_button, &QPushButton::clicked, this, [this]() { sendMovementRequest(true, true); });
+    connect(move_x_neg_button, &QPushButton::clicked, this, [this]() { sendMovementRequest(true, false); });
+    connect(move_z_button, &QPushButton::clicked, this, [this]() { sendMovementRequest(false, true); });
+    connect(move_z_neg_button, &QPushButton::clicked, this, [this]() { sendMovementRequest(false, false); });
     connect(home_button, &QPushButton::clicked, this, &CustomPlugin::onMoveToHome);
 
     // Start the ROS2 node in a separate thread
@@ -227,29 +232,29 @@ private Q_SLOTS:
     }
   }
 
-  void sendMovementRequest(const std::string& service_name, bool direction) {
-    auto client = (service_name == "move_x") ? move_x_client_ : move_z_client_;
-
-    if (!client->wait_for_service(std::chrono::seconds(2))) {
-      RCLCPP_ERROR(logger_, "Service %s not available", service_name.c_str());
-      return;
-    }
-
-    auto request = std::make_shared<std_srvs::srv::SetBool::Request>();
-    request->data = direction;
-
-    auto future = client->async_send_request(request);
-    try {
-      auto response = future.get();
-      if (response->success) {
-        RCLCPP_INFO(logger_, "%s movement successful: %s", service_name.c_str(), response->message.c_str());
-      } else {
-        RCLCPP_ERROR(logger_, "%s movement failed: %s", service_name.c_str(), response->message.c_str());
+  void sendMovementRequest(bool is_x_direction, bool is_positive) {
+      if (!move_linear_client_->wait_for_service(std::chrono::seconds(2))) {
+          RCLCPP_ERROR(logger_, "Service move_linear not available");
+          return;
       }
-    } catch (const std::exception &e) {
-      RCLCPP_ERROR(logger_, "Service call failed: %s", e.what());
+  
+      auto request = std::make_shared<rviz_services::srv::MoveLinear::Request>();
+      request->direction = is_x_direction ? "X" : "Z";
+      request->distance_mm = movement_step_size_ * (is_positive ? 1.0 : -1.0);  // Use distance_mm instead of step_size
+  
+      auto future = move_linear_client_->async_send_request(request);
+      try {
+          auto response = future.get();
+          if (response->success) {
+              RCLCPP_INFO(logger_, "Move %s successful", request->direction.c_str());
+          } else {
+              RCLCPP_ERROR(logger_, "Move %s failed", request->direction.c_str());
+          }
+      } catch (const std::exception &e) {
+          RCLCPP_ERROR(logger_, "Service call failed: %s", e.what());
+      }
     }
-  }
+
 
   void onMoveToHome()
   {
