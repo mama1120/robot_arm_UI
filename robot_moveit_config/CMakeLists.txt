@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.22)
 project(robot_moveit_config)
 
 find_package(ament_cmake REQUIRED)
+find_package(rviz2_teach_plugin REQUIRED)
 
 ament_package()
 

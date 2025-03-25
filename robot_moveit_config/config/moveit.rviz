@@ -1,13 +1,15 @@
 Panels:
-  - Class: rviz_common/Displays
-    Name: Displays
-    Property Tree Widget:
-      Expanded:
-        - /MotionPlanning1
-  - Class: rviz_common/Help
-    Name: Help
-  - Class: rviz_common/Views
-    Name: Views
+  #- Class: rviz_common/Displays
+  #  Name: Displays
+  #  Property Tree Widget:
+  #    Expanded:
+  #      - /MotionPlanning1
+  #- Class: rviz_common/Help
+  #  Name: Help
+  #- Class: rviz_common/Views
+  #  Name: Views
+  - Class: rviz_teach_plugin/CustomPlugin  # Add your custom panel here
+    Name: Custom Teach Plugin
 Visualization Manager:
   Displays:
     - Class: rviz_default_plugins/Grid
