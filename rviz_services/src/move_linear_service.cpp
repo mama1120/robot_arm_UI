@@ -8,16 +8,13 @@ void move_linear_callback(
 {
   (void) request_header; // Unused
 
-  // Log the received values.
-  // For example: direction 0 could represent X direction, 1 for Z direction.
+  // Log the received values
   RCLCPP_INFO(rclcpp::get_logger("rclcpp"),
-              "Moving linear in direction: %d, distance: %f mm",
-              request->direction, request->distance_mm);
+              "Moving linear in direction: '%s', distance: %.2f mm",
+              request->direction.c_str(), request->distance_mm);  
 
-  // Here you would add your robot movement code
-  // e.g., move_robot(request->direction, request->distance_mm);
 
-  // Respond with success
+  // Assume movement is successful
   response->success = true;
 }
 
