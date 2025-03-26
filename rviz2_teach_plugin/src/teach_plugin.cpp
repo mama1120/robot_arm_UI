@@ -20,8 +20,15 @@
 #include <random>
 #include <QComboBox>
 #include "std_srvs/srv/set_bool.hpp"
-#include "rviz_services/srv/move_linear.hpp"
 #include <thread>
+#include "sensor_msgs/msg/joint_state.hpp"
+#include <chrono>
+#include "rclcpp/rclcpp.hpp"
+#include <std_msgs/msg/string.hpp>
+#include <QTimer>
+#include <QMessageBox>
+#include "rviz_services/srv/move_linear.hpp"
+
 
 namespace rviz_teach_plugin
 {
@@ -35,9 +42,16 @@ public:
     rclcpp::Logger logger_ = rclcpp::get_logger("CustomPlugin");
     QListWidget* point_list_;
     QLineEdit* file_path_edit_;
+    QLabel* status_label_;
+    QPushButton* cancel_run_button_;
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pose_publisher_;
+    rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_pub_;
+    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr status_sub_;
+    rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr cancel_motion_client_;
     std::map<QString, QJsonObject> waypoint_data_;
-    double movement_step_size_;
+    QStringList pending_waypoints_;
+    bool is_executing_points_ = false;
+    double movement_step_size_ =10.0;
 
     // Service clients for X, Z, and Home movements
     rclcpp::Client<rviz_services::srv::MoveLinear>::SharedPtr move_linear_client_;
@@ -48,6 +62,8 @@ public:
   {
     node_ = std::make_shared<rclcpp::Node>("rviz_teach_plugin");
     pose_publisher_ = node_->create_publisher<geometry_msgs::msg::PoseStamped>("move_robot", 10);
+    joint_pub_ = node_->create_publisher<sensor_msgs::msg::JointState>("target_joint_states", 10);
+    cancel_motion_client_ = node_->create_client<std_srvs::srv::Trigger>("cancel_motion");
 
     // Create service clients
     move_linear_client_ = node_->create_client<rviz_services::srv::MoveLinear>("move_linear");
@@ -81,13 +97,34 @@ public:
     auto *teach_button = new QPushButton("Teach Point");
     teach_layout->addWidget(teach_button);
 
+    auto *move_run_buttons_layout = new QVBoxLayout;
+    auto *button_row = new QHBoxLayout;
+    auto *move_to_point_button = new QPushButton("Move to Point");
+    auto *run_all_points_button = new QPushButton("Run all Points");
+    button_row->addWidget(move_to_point_button);
+    button_row->addWidget(run_all_points_button);
+    move_run_buttons_layout->addLayout(button_row);
+    
+    
+    // Status-Label vorbereiten, aber leer lassen
+    status_label_ = new QLabel();
+    status_label_->setVisible(false);  // Anfangs nicht sichtbar
+    status_label_->setStyleSheet("font-weight: bold; color: orange;");
+    move_run_buttons_layout->addWidget(status_label_);
+
+    cancel_run_button_ = new QPushButton("Abbrechen");
+    cancel_run_button_->setVisible(false);  // Anfangs ausgeblendet
+    button_row->addWidget(cancel_run_button_);
+        
+    teach_layout->addLayout(move_run_buttons_layout);
+/*
     auto *move_run_buttons_layout = new QHBoxLayout;
     auto *move_to_point_button = new QPushButton("Move to Point");
     auto *run_all_points_button = new QPushButton("Run all Points");
     move_run_buttons_layout->addWidget(move_to_point_button);
     move_run_buttons_layout->addWidget(run_all_points_button);
     teach_layout->addLayout(move_run_buttons_layout);
-
+*/
     teach_tab->setLayout(teach_layout);
     tab_widget->addTab(teach_tab, "Teach");
  
@@ -182,7 +219,7 @@ public:
    load_layout->addWidget(close_file_button);
    load_tab->setLayout(load_layout);
    tab_widget->addTab(load_tab, "Load File");
-    
+
     // Main layout
     main_layout->addWidget(tab_widget);
     setLayout(main_layout);
@@ -210,8 +247,25 @@ public:
     connect(move_z_neg_button, &QPushButton::clicked, this, [this]() { sendMovementRequest(false, false); });
     connect(home_button, &QPushButton::clicked, this, &CustomPlugin::onMoveToHome);
 
+/*
+    status_label_ = new QLabel();
+    status_label_->setVisible(false);
+    status_label_->setStyleSheet("font-weight: bold; color: orange;");
+ */   
     // Start the ROS2 node in a separate thread
     ros_thread_ = std::thread([this]() { rclcpp::spin(node_); });
+    // Feedback vom Roboter abonnieren
+    status_sub_ = node_->create_subscription<std_msgs::msg::String>(
+      "robot_execution_status", 10,
+      [this](const std_msgs::msg::String::SharedPtr msg) {
+        RCLCPP_INFO(logger_, "Feedback vom Roboter: %s", msg->data.c_str());
+     
+        if (is_executing_points_) {
+          executeNextWaypoint();
+        }
+      }
+    );
+
   }
 
   ~CustomPlugin()
@@ -289,16 +343,57 @@ private Q_SLOTS:
 
     QString waypoint_name = selectedItem->text();
     if (waypoint_data_.find(waypoint_name) != waypoint_data_.end()) {
-        std::random_device rd;
-        std::mt19937 gen(rd());
-        std::uniform_real_distribution<double> dist(-180.0, 180.0);
-        std::uniform_real_distribution<double> gripper_dist(0.0, 100.0);
+         // Temporärer Node zum einmaligen Abrufen
+        auto temp_node = rclcpp::Node::make_shared("joint_state_reader_temp");
+        auto sub = temp_node->create_subscription<sensor_msgs::msg::JointState>(
+          "/joint_states", 10,
+          [](const sensor_msgs::msg::JointState::SharedPtr) { /* Nur Dummy */ });
 
-        waypoint_data_[waypoint_name]["joint1"] = dist(gen);
-        waypoint_data_[waypoint_name]["joint2"] = dist(gen);
-        waypoint_data_[waypoint_name]["joint3"] = dist(gen);
-        waypoint_data_[waypoint_name]["joint4"] = dist(gen);
-        waypoint_data_[waypoint_name]["gripper"] = gripper_dist(gen);
+        // Warten auf eine Nachricht mit Timeout
+        sensor_msgs::msg::JointState::SharedPtr msg = nullptr;
+        auto start = std::chrono::steady_clock::now();
+        rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr subscription;
+
+        std::promise<sensor_msgs::msg::JointState::SharedPtr> msg_promise;
+        auto future = msg_promise.get_future();
+
+        subscription = temp_node->create_subscription<sensor_msgs::msg::JointState>(
+          "/joint_states", 10,
+          [&msg_promise](sensor_msgs::msg::JointState::SharedPtr m) {
+            msg_promise.set_value(m);
+          });
+
+        rclcpp::executors::SingleThreadedExecutor executor;
+        executor.add_node(temp_node);
+
+        if (executor.spin_until_future_complete(future, std::chrono::seconds(2)) !=
+            rclcpp::FutureReturnCode::SUCCESS)
+        {
+          RCLCPP_WARN(temp_node->get_logger(), "Kein /joint_states erhalten!");
+          return;
+        }
+
+        msg = future.get();
+
+        // Mapping: Name → Position
+        std::map<std::string, double> joint_map;
+        for (size_t i = 0; i < msg->name.size(); ++i) {
+          joint_map[msg->name[i]] = msg->position[i];
+        }
+
+        // Werte extrahieren
+        double joint1 = joint_map["joint1"];
+        double joint2 = joint_map["joint2"];
+        double joint3 = joint_map["joint3"];
+        double joint4 = joint_map["joint4"];
+        double gripper = joint_map["joint_plate"];  // Mapping!
+
+      
+        waypoint_data_[waypoint_name]["joint1"] = joint1;
+        waypoint_data_[waypoint_name]["joint2"] = joint2;
+        waypoint_data_[waypoint_name]["joint3"] = joint3;
+        waypoint_data_[waypoint_name]["joint4"] = joint4;
+        waypoint_data_[waypoint_name]["gripper"] = gripper;
     }
 
     RCLCPP_INFO(logger_, "Updated values for %s", waypoint_name.toStdString().c_str());
@@ -314,23 +409,68 @@ private Q_SLOTS:
         index++;
     } while (pointExists(waypoint_name));
 
-    // Zufällige Gelenkwerte generieren
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_real_distribution<double> dist(-180.0, 180.0);
+      // Temporärer Node zum einmaligen Abrufen
+    auto temp_node = rclcpp::Node::make_shared("joint_state_reader_temp");
+    auto sub = temp_node->create_subscription<sensor_msgs::msg::JointState>(
+      "/joint_states", 10,
+      [](const sensor_msgs::msg::JointState::SharedPtr) { /* Nur Dummy */ });
+
+    // Warten auf eine Nachricht mit Timeout
+    sensor_msgs::msg::JointState::SharedPtr msg = nullptr;
+    auto start = std::chrono::steady_clock::now();
+    rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr subscription;
+
+    std::promise<sensor_msgs::msg::JointState::SharedPtr> msg_promise;
+    auto future = msg_promise.get_future();
+
+    subscription = temp_node->create_subscription<sensor_msgs::msg::JointState>(
+      "/joint_states", 10,
+      [&msg_promise](sensor_msgs::msg::JointState::SharedPtr m) {
+        msg_promise.set_value(m);
+      });
+
+    rclcpp::executors::SingleThreadedExecutor executor;
+    executor.add_node(temp_node);
+
+    if (executor.spin_until_future_complete(future, std::chrono::seconds(2)) !=
+        rclcpp::FutureReturnCode::SUCCESS)
+    {
+      RCLCPP_WARN(temp_node->get_logger(), "Kein /joint_states erhalten!");
+      return;
+    }
+
+    msg = future.get();
+
+    // Mapping: Name → Position
+    std::map<std::string, double> joint_map;
+    for (size_t i = 0; i < msg->name.size(); ++i) {
+      joint_map[msg->name[i]] = msg->position[i];
+    }
+
+    // Werte extrahieren
+    double joint1 = joint_map["joint1"];
+    double joint2 = joint_map["joint2"];
+    double joint3 = joint_map["joint3"];
+    double joint4 = joint_map["joint4"];
+    double gripper = joint_map["joint_plate"];  // Mapping!
+
+   
+    // Speichern
     QJsonObject new_point;
     new_point["name"] = waypoint_name;
-    new_point["joint1"] = dist(gen);
-    new_point["joint2"] = dist(gen);
-    new_point["joint3"] = dist(gen);
-    new_point["joint4"] = dist(gen);
-    std::uniform_real_distribution<double> gripper_dist(0.0, 100.0);
-    new_point["gripper"] = gripper_dist(gen);
+    new_point["joint1"] = joint1;
+    new_point["joint2"] = joint2;
+    new_point["joint3"] = joint3;
+    new_point["joint4"] = joint4;
+    new_point["gripper"] = gripper;
 
     // Punkt zur Liste hinzufügen
     point_list_->addItem(waypoint_name);
     waypoint_data_[waypoint_name] = new_point;
-}
+
+    RCLCPP_INFO(logger_, "Neuer Punkt gespeichert: %s", waypoint_name.toStdString().c_str());
+
+  }
 
   bool pointExists(const QString &name)
   {
@@ -371,40 +511,70 @@ private Q_SLOTS:
     }
 
 
-  void moveToPoint()
-  {
-    QListWidgetItem *selectedItem = point_list_->currentItem();
-    if (!selectedItem) {
-        RCLCPP_WARN(logger_, "No point selected!");
-        return;
+    void moveToPoint()
+    {
+      QListWidgetItem *selectedItem = point_list_->currentItem();
+      if (!selectedItem) {
+          RCLCPP_WARN(logger_, "No point selected!");
+          return;
+      }
+    
+      QString waypoint_name = selectedItem->text();
+      if (waypoint_data_.find(waypoint_name) != waypoint_data_.end()) {
+          QJsonObject point_data = waypoint_data_[waypoint_name];
+    
+          double joint1 = point_data["joint1"].toDouble();
+          double joint2 = point_data["joint2"].toDouble();
+          double joint3 = point_data["joint3"].toDouble();
+          double joint4 = point_data["joint4"].toDouble();
+          double gripper = point_data["gripper"].toDouble();
+    
+          sensor_msgs::msg::JointState msg;
+          // ✨ Diese Reihenfolge erwartet dein joint_listener
+          msg.name = {"joint2", "joint3", "joint1", "joint4", "joint_plate"};
+          msg.position = {joint2, joint3, joint1, joint4, gripper};
+          msg.header.stamp = node_->now();
+          msg.header.frame_id = waypoint_name.toStdString();
+          joint_pub_->publish(msg);
+    
+          RCLCPP_INFO(logger_, "Gesendeter Waypoint: %s", waypoint_name.toStdString().c_str());
+          RCLCPP_INFO(logger_, "joint1: %.2f, joint2: %.2f, joint3: %.2f, joint4: %.2f, gripper: %.2f",
+                      joint1, joint2, joint3, joint4, gripper);
+      } else {
+          RCLCPP_WARN(logger_, "Waypoint %s not found in stored data!", waypoint_name.toStdString().c_str());
+      }
     }
-
-    QString waypoint_name = selectedItem->text();
-    if (waypoint_data_.find(waypoint_name) != waypoint_data_.end()) {
-        QJsonObject point_data = waypoint_data_[waypoint_name];
-
-        double joint1 = point_data["joint1"].toDouble();
-        double joint2 = point_data["joint2"].toDouble();
-        double joint3 = point_data["joint3"].toDouble();
-        double joint4 = point_data["joint4"].toDouble();
-        double gripper = point_data["gripper"].toDouble();
-
-        // Ausgabe in der Konsole
-        RCLCPP_INFO(logger_, "Waypoint: %s", waypoint_name.toStdString().c_str());
-        RCLCPP_INFO(logger_, "Joint1: %f, Joint2: %f, Joint3: %f, Joint4: %f, Gripper: %f",
-                    joint1, joint2, joint3, joint4, gripper);
-    } else {
-        RCLCPP_WARN(logger_, "Waypoint %s not found in stored data!", waypoint_name.toStdString().c_str());
-    }
-}
+    
 
   void runAllPoints() 
   {
-      RCLCPP_INFO(rclcpp::get_logger("CustomPlugin"), "Executing all saved points");
-      for (int i = 0; i < point_list_->count(); ++i) {
-          QString point_name = point_list_->item(i)->text();
-          RCLCPP_INFO(rclcpp::get_logger("CustomPlugin"), "Running point: %s", point_name.toStdString().c_str());
-      }
+    
+    if (is_executing_points_) {
+      RCLCPP_WARN(logger_, "Bereits in Ausführung!");
+      return;
+    }
+  
+    if (point_list_->count() == 0) {
+      RCLCPP_WARN(logger_, "Keine Wegpunkte vorhanden.");
+      return;
+    }
+  
+    pending_waypoints_.clear();
+    for (int i = 0; i < point_list_->count(); ++i) {
+      pending_waypoints_ << point_list_->item(i)->text();
+    }
+  
+    is_executing_points_ = true;
+    RCLCPP_INFO(logger_, "Starte Abarbeitung aller Punkte...");
+
+    status_label_->setText("Status: Starte Abarbeitung...");
+    status_label_->setStyleSheet("font-weight: bold; color: orange;");
+  
+    status_label_->setVisible(true);
+    cancel_run_button_->setVisible(true);
+    status_label_->setText("Status: Starte Abarbeitung...");
+    status_label_->setStyleSheet("font-weight: bold; color: orange;");
+    executeNextWaypoint();
   }
 
   void closeFile() 
@@ -416,6 +586,74 @@ private Q_SLOTS:
     RCLCPP_INFO(logger_, "File closed and points cleared");
 }
 
+void cancelExecution()
+{
+  if (!is_executing_points_) {
+    RCLCPP_INFO(logger_, "Kein aktiver Ablauf zum Abbrechen.");
+    return;
+  }
+
+  RCLCPP_WARN(logger_, "Abarbeitung durch Benutzer abgebrochen.");
+  is_executing_points_ = false;
+  pending_waypoints_.clear();
+
+  cancel_run_button_->setVisible(false);
+
+  if (cancel_motion_client_->wait_for_service(std::chrono::seconds(1))) {
+    auto request = std::make_shared<std_srvs::srv::Trigger::Request>();
+    auto future = cancel_motion_client_->async_send_request(request);
+    try {
+      auto result = future.get();
+      if (result->success) {
+        RCLCPP_INFO(logger_, "Bewegung wurde erfolgreich gestoppt: %s", result->message.c_str());
+      } else {
+        RCLCPP_WARN(logger_, "Stop-Service antwortete, aber nicht erfolgreich.");
+      }
+    } catch (const std::exception &e) {
+      RCLCPP_ERROR(logger_, "Fehler beim Aufruf von cancel_motion: %s", e.what());
+    }
+  } else {
+    RCLCPP_ERROR(logger_, "Stop-Service /cancel_motion nicht verfügbar.");
+  }
+
+  status_label_->setText("Status: Vorgang abgebrochen.");
+  status_label_->setStyleSheet("font-weight: bold; color: red;");
+  status_label_->setVisible(false);
+
+  QMessageBox::warning(this, "Abgebrochen", "Die Ausführung wurde abgebrochen.");
+}
+
+void executeNextWaypoint()
+{
+  if (pending_waypoints_.isEmpty()) {
+    RCLCPP_INFO(logger_, "Alle Punkte wurden ausgeführt.");
+    is_executing_points_ = false;
+
+    status_label_->setText("Status: Alle Punkte ausgeführt.");
+    status_label_->setStyleSheet("font-weight: bold; color: green;");
+    status_label_->setVisible(true);
+    cancel_run_button_->setVisible(false);
+
+    QMessageBox::information(this, "Fertig", "Alle Punkte wurden erfolgreich ausgeführt.");
+    return;
+  }
+
+  status_label_->setText("Status: Ausführen → " + pending_waypoints_.first());
+  status_label_->setStyleSheet("font-weight: bold; color: orange;");
+  status_label_->setVisible(true);
+
+  QString next_point = pending_waypoints_.takeFirst();
+  RCLCPP_INFO(logger_, "Sende Punkt: %s", next_point.toStdString().c_str());
+
+  for (int i = 0; i < point_list_->count(); ++i) {
+    if (point_list_->item(i)->text() == next_point) {
+      point_list_->setCurrentRow(i);
+      break;
+    }
+  }
+
+  moveToPoint();
+}
  
 
 void openFileDialog() 
