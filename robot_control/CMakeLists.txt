@@ -13,6 +13,7 @@ find_package(sensor_msgs REQUIRED)
 find_package(moveit_visual_tools REQUIRED)
 find_package(example_interfaces REQUIRED)
 find_package(rviz_services REQUIRED)
+find_package(control_msgs REQUIRED)
 
 
 # Include directories
@@ -35,6 +36,12 @@ install(TARGETS multiple_positions
 ament_target_dependencies(forward_kinematic rclcpp sensor_msgs moveit_ros_planning_interface)
 
 install(TARGETS forward_kinematic
+  DESTINATION lib/${PROJECT_NAME})
+
+add_executable(joint_listener src/joint_listener.cpp)
+ament_target_dependencies(joint_listener rclcpp sensor_msgs moveit_ros_planning_interface control_msgs)
+  
+install(TARGETS joint_listener
   DESTINATION lib/${PROJECT_NAME})
 
 
