@@ -25,9 +25,17 @@ def generate_launch_description():
         output='screen'
     )
     
+    joint_listener_node = Node(
+        package='robot_control',
+        executable='joint_listener',
+        name='joint_listener_node',
+        output='screen'
+    )
+    
     # Return the launch description with all the nodes and demo launch
     return LaunchDescription([
         moveit_demo_launch,
         move_home_node,
         move_X_Z_node,
+        joint_listener_node
     ])
