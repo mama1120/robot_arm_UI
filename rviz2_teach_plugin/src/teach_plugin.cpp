@@ -28,6 +28,8 @@
 #include <QTimer>
 #include <QMessageBox>
 #include "rviz_services/srv/move_linear.hpp"
+#include <rviz_common/display_context.hpp>
+
 
 
 namespace rviz_teach_plugin
@@ -49,9 +51,21 @@ public:
     rclcpp::Subscription<std_msgs::msg::String>::SharedPtr status_sub_;
     rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr cancel_motion_client_;
     std::map<QString, QJsonObject> waypoint_data_;
+
     QStringList pending_waypoints_;
     bool is_executing_points_ = false;
     double movement_step_size_ =10.0;
+    //rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_state_sub_;
+    // Neu:
+    std::map<QString, QSlider*> joint_slider_map_;
+    std::map<QString, QLabel*> joint_label_map_;
+    QSlider* gripper_slider_;
+    QLabel* gripper_label_;
+
+
+    
+  
+
 
     // Service clients for X, Z, and Home movements
     rclcpp::Client<rviz_services::srv::MoveLinear>::SharedPtr move_linear_client_;
@@ -64,6 +78,9 @@ public:
     pose_publisher_ = node_->create_publisher<geometry_msgs::msg::PoseStamped>("move_robot", 10);
     joint_pub_ = node_->create_publisher<sensor_msgs::msg::JointState>("target_joint_states", 10);
     cancel_motion_client_ = node_->create_client<std_srvs::srv::Trigger>("cancel_motion");
+
+    // JointState Listener starten
+    setup_joint_state_listener(); 
 
     // Create service clients
     move_linear_client_ = node_->create_client<rviz_services::srv::MoveLinear>("move_linear");
@@ -117,55 +134,86 @@ public:
     button_row->addWidget(cancel_run_button_);
         
     teach_layout->addLayout(move_run_buttons_layout);
-/*
-    auto *move_run_buttons_layout = new QHBoxLayout;
-    auto *move_to_point_button = new QPushButton("Move to Point");
-    auto *run_all_points_button = new QPushButton("Run all Points");
-    move_run_buttons_layout->addWidget(move_to_point_button);
-    move_run_buttons_layout->addWidget(run_all_points_button);
-    teach_layout->addLayout(move_run_buttons_layout);
-*/
     teach_tab->setLayout(teach_layout);
     tab_widget->addTab(teach_tab, "Teach");
- 
+
+    // ========================
     // Move Robot Tab
+    // ========================
     QWidget *move_tab = new QWidget;
     QVBoxLayout *move_layout = new QVBoxLayout;
 
-    // Sliders for Joint Angles and Gripper
+    // Label für Abschnitt
     auto *joint_control_label = new QLabel("Joint Controls:");
     move_layout->addWidget(joint_control_label);
-    for (int i = 1; i <= 4; ++i) {
-        auto *joint_layout = new QHBoxLayout;
-        auto *joint_label = new QLabel(QString("Joint %1 Angle:").arg(i));
-        auto *joint_value = new QLabel("0°");
-        joint_value->setFixedWidth(50);
-        auto *joint_slider = new QSlider(Qt::Horizontal);
-        joint_slider->setRange(-180, 180);
-        joint_layout->addWidget(joint_label);
-        joint_layout->addWidget(joint_slider);
-        joint_layout->addWidget(joint_value);
-        move_layout->addLayout(joint_layout);
 
-        connect(joint_slider, &QSlider::valueChanged, [joint_value](int value){
-            joint_value->setText(QString::number(value) + "°");
-        });
-        move_layout->addWidget(joint_slider);
-    }
+    // Gemeinsamer Speicher für alle Slider
+    std::map<QString, QSlider*> joint_slider_map;
+
+  // Gelenk-Slider: Joint 1 – 4 mit individuellen Bereichen
+const QMap<int, QPair<int, int>> joint_ranges = {
+  {1, {-150, 150}},
+  {2, {-60, 55}},
+  {3, {-120, 120}},
+  {4, {-90, 100}}
+};
+
+for (int i = 1; i <= 4; ++i) {
+  QString joint_name = QString("joint%1").arg(i);
+  auto *joint_layout = new QHBoxLayout;
+  auto *joint_label = new QLabel(QString("Joint %1 Angle:").arg(i));
+
+  auto *joint_value = new QLabel("0°");
+  joint_value->setFixedWidth(50);
+  joint_value->setObjectName(joint_name + "_label");
+
+  auto *joint_slider = new QSlider(Qt::Horizontal);
+  joint_slider->setRange(joint_ranges[i].first, joint_ranges[i].second);
+  joint_slider->setValue(0);
+  joint_slider->setObjectName(joint_name);
+
+  joint_slider_map_[joint_name] = joint_slider;
+  joint_label_map_[joint_name] = joint_value;
+
+  joint_layout->addWidget(joint_label);
+  joint_layout->addWidget(joint_slider);
+  joint_layout->addWidget(joint_value);
+  move_layout->addLayout(joint_layout);
+
+  connect(joint_slider, &QSlider::sliderReleased, this, [this]() {
+    sendSliderJointState();
+  });
+}
+  
+
+    
+    // Gripper-Slider
     auto *gripper_label = new QLabel("Gripper Opening:");
     auto *gripper_slider = new QSlider(Qt::Horizontal);
     gripper_slider->setRange(0, 100);
-    auto *gripper_layout = new QHBoxLayout;
-    gripper_layout->addWidget(gripper_label);
+    gripper_slider->setValue(0);
+    gripper_slider->setObjectName("gripper");
+    
     auto *gripper_value = new QLabel("0%");
     gripper_value->setFixedWidth(50);
+    gripper_value->setObjectName("gripper_label");
+    
+    gripper_slider_ = gripper_slider;
+    gripper_label_ = gripper_value;
+    joint_slider_map_["joint_plate"] = gripper_slider_;     // <== HINZUGEFÜGT
+    joint_label_map_["joint_plate"] = gripper_label_; 
+
+        
+    auto *gripper_layout = new QHBoxLayout;
+    gripper_layout->addWidget(gripper_label);
     gripper_layout->addWidget(gripper_slider);
     gripper_layout->addWidget(gripper_value);
     move_layout->addLayout(gripper_layout);
-
-    connect(gripper_slider, &QSlider::valueChanged, [gripper_value](int value){
-        gripper_value->setText(QString::number(value) + "%");
-    });
+    
+    
+    connect(gripper_slider, &QSlider::sliderReleased, this, [this]() {
+      sendSliderJointState();
+  });
     
     // Section for controlling linear movements
     auto *lin_movement_label = new QLabel("Linear Movements:");
@@ -246,12 +294,11 @@ public:
     connect(move_z_button, &QPushButton::clicked, this, [this]() { sendMovementRequest(false, true); });
     connect(move_z_neg_button, &QPushButton::clicked, this, [this]() { sendMovementRequest(false, false); });
     connect(home_button, &QPushButton::clicked, this, &CustomPlugin::onMoveToHome);
+    connect(cancel_run_button_, &QPushButton::clicked, this, &CustomPlugin::cancelExecution);
 
-/*
-    status_label_ = new QLabel();
-    status_label_->setVisible(false);
-    status_label_->setStyleSheet("font-weight: bold; color: orange;");
- */   
+
+
+ 
     // Start the ROS2 node in a separate thread
     ros_thread_ = std::thread([this]() { rclcpp::spin(node_); });
     // Feedback vom Roboter abonnieren
@@ -266,6 +313,16 @@ public:
       }
     );
 
+
+    poll_timer_ = new QTimer(this);
+    connect(poll_timer_, &QTimer::timeout, this, [this]() {
+        fetchAndPrintJointStates();
+    });
+    poll_timer_->start(500);  // alle 1 Sekunde
+    
+    
+  
+
   }
 
   ~CustomPlugin()
@@ -274,9 +331,141 @@ public:
     if (ros_thread_.joinable()) {
       ros_thread_.join();
     }
+    running_ = false;
+    if (joint_listener_thread_.joinable())
+        joint_listener_thread_.join();
+
+    poll_timer_->stop();
   }
 
 private Q_SLOTS:
+void onInitialize() override
+{
+  node_ = getDisplayContext()->getRosNodeAbstraction().lock()->get_raw_node();
+
+  joint_state_sub_ = node_->create_subscription<sensor_msgs::msg::JointState>(
+    "/joint_states", rclcpp::SensorDataQoS(),
+    [this](const sensor_msgs::msg::JointState::SharedPtr msg) {
+      latest_joint_state_ = msg;
+    });
+}
+  void connect_joint_slider(QSlider *slider, QLabel *value_label) 
+  {
+    connect(slider, &QSlider::valueChanged, [value_label](int value){
+        value_label->setText(QString::number(value) + "°");
+    });
+
+
+  }
+
+  void connect_gripper_slider(QSlider *slider, QLabel *value_label) 
+  {
+    connect(slider, &QSlider::valueChanged, [value_label](int value){
+        value_label->setText(QString::number(value) + "%");
+    });
+
+  
+  }
+
+  void sendSliderJointState()
+  {
+      sensor_msgs::msg::JointState msg;
+      msg.name = {"joint2", "joint3", "joint1", "joint4", "joint_plate"};
+  
+      std::map<std::string, double> joint_values;
+  
+      for (const auto& pair : joint_slider_map_) {
+          std::string name = pair.first.toStdString();
+          QSlider* slider = pair.second;
+          double value = slider->value();
+  
+          // Gripper extra behandeln → mm statt °
+          if (name == "joint_plate") {
+            joint_values[name] = value / 100.0 * 0.01;
+          } else {
+              joint_values[name] = value * M_PI / 180.0;  // Grad → RAD
+          }
+      }
+  
+      msg.position = {
+          joint_values["joint2"],
+          joint_values["joint3"],
+          joint_values["joint1"],
+          joint_values["joint4"],
+          joint_values["joint_plate"]
+      };
+  
+      msg.header.stamp = node_->now();
+      msg.header.frame_id = "slider_command";
+      joint_pub_->publish(msg);
+  
+      RCLCPP_INFO(logger_, "Slider-Werte gesendet.");
+  }
+  
+
+  void start_joint_state_thread()
+{
+    joint_listener_thread_ = std::thread([this]() {
+        listener_node_ = std::make_shared<rclcpp::Node>("joint_listener_background");
+
+        auto sub = listener_node_->create_subscription<sensor_msgs::msg::JointState>(
+            "/joint_states",
+            rclcpp::SensorDataQoS(),
+            [](const sensor_msgs::msg::JointState::SharedPtr msg) {
+                qDebug() << "=== Live JointStates ===";
+                for (size_t i = 0; i < msg->name.size(); ++i) {
+                    qDebug() << QString::fromStdString(msg->name[i]) << ": " << msg->position[i];
+                }
+            }
+        );
+
+        rclcpp::executors::SingleThreadedExecutor exec;
+        exec.add_node(listener_node_);
+
+        while (rclcpp::ok() && running_) {
+            exec.spin_once();
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+    });
+}
+
+  
+  void setup_joint_state_listener()
+  {
+      // Eigenen ROS2-Node anlegen
+      joint_listener_node_ = std::make_shared<rclcpp::Node>("joint_listener_node");
+  
+      // Subscription mit SensorDataQoS
+      joint_listener_node_->create_subscription<sensor_msgs::msg::JointState>(
+        "/joint_states", rclcpp::SensorDataQoS(),
+        [this](sensor_msgs::msg::JointState::SharedPtr msg) {
+          latest_joint_state_ = msg;
+        });
+  
+      // Executor und Spin-Thread
+      executor_ = std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
+      executor_->add_node(joint_listener_node_);
+      ros_spin_thread_ = std::thread([this]() {
+          executor_->spin();
+      });
+  
+      // Timer zur regelmäßigen Ausgabe (läuft im Qt-Thread!)
+      QTimer* timer = new QTimer(this);
+      connect(timer, &QTimer::timeout, this, [this]() {
+          if (!latest_joint_state_) return;
+  
+          qDebug() << "==== Aktuelle JointStates ====";
+          for (size_t i = 0; i < latest_joint_state_->name.size(); ++i) {
+              QString name = QString::fromStdString(latest_joint_state_->name[i]);
+              double pos = latest_joint_state_->position[i];
+              qDebug() << name << ": " << pos;
+          }
+      });
+      timer->start(500);
+  }
+  
+  
+
   void setStepSize(int index)
   {
     QComboBox *step_size_dropdown = qobject_cast<QComboBox*>(sender());
@@ -309,6 +498,8 @@ private Q_SLOTS:
 }
 
 
+
+ 
 void onMoveToHome()
 {
   if (!home_client_->wait_for_service(std::chrono::seconds(2))) {
@@ -330,7 +521,6 @@ void onMoveToHome()
     }
   );
 }
-
 
   void onTeachPoint()
   {
@@ -585,6 +775,8 @@ void onMoveToHome()
     RCLCPP_INFO(logger_, "File closed and points cleared");
 }
 
+
+
 void cancelExecution()
 {
   if (!is_executing_points_) {
@@ -593,18 +785,32 @@ void cancelExecution()
   }
 
   RCLCPP_WARN(logger_, "Abarbeitung durch Benutzer abgebrochen.");
+
+  // Setze Status zurück
   is_executing_points_ = false;
   pending_waypoints_.clear();
-
   cancel_run_button_->setVisible(false);
+  status_label_->setText("Status: Vorgang abgebrochen.");
+  status_label_->setStyleSheet("font-weight: bold; color: red;");
+  
 
-  if (cancel_motion_client_->wait_for_service(std::chrono::seconds(1))) {
+  // Optionale Rückmeldung mit nicht-blockierender Box
+  QMessageBox *box = new QMessageBox(this);
+  box->setWindowTitle("Abgebrochen");
+  box->setText("Die Ausführung wurde abgebrochen.");
+  box->setIcon(QMessageBox::Warning);
+  box->setStandardButtons(QMessageBox::Ok);
+  box->show();
+  status_label_->setVisible(false);
+
+  // Stop-Service aufrufen (wenn vorhanden)
+  if (cancel_motion_client_ && cancel_motion_client_->wait_for_service(std::chrono::seconds(1))) {
     auto request = std::make_shared<std_srvs::srv::Trigger::Request>();
     auto future = cancel_motion_client_->async_send_request(request);
     try {
       auto result = future.get();
       if (result->success) {
-        RCLCPP_INFO(logger_, "Bewegung wurde erfolgreich gestoppt: %s", result->message.c_str());
+        RCLCPP_INFO(logger_, "Bewegung erfolgreich gestoppt: %s", result->message.c_str());
       } else {
         RCLCPP_WARN(logger_, "Stop-Service antwortete, aber nicht erfolgreich.");
       }
@@ -614,13 +820,8 @@ void cancelExecution()
   } else {
     RCLCPP_ERROR(logger_, "Stop-Service /cancel_motion nicht verfügbar.");
   }
-
-  status_label_->setText("Status: Vorgang abgebrochen.");
-  status_label_->setStyleSheet("font-weight: bold; color: red;");
-  status_label_->setVisible(false);
-
-  QMessageBox::warning(this, "Abgebrochen", "Die Ausführung wurde abgebrochen.");
 }
+
 
 void executeNextWaypoint()
 {
@@ -630,18 +831,29 @@ void executeNextWaypoint()
 
     status_label_->setText("Status: Alle Punkte ausgeführt.");
     status_label_->setStyleSheet("font-weight: bold; color: green;");
-    status_label_->setVisible(true);
+    
+    QTimer::singleShot(0, this, [this]() {
+      QMessageBox *box = new QMessageBox(QMessageBox::Information,
+                                         "Fertig",
+                                         "Alle Punkte wurden erfolgreich ausgeführt.",
+                                         QMessageBox::Ok,
+                                         this);
+      box->setAttribute(Qt::WA_DeleteOnClose);  // Automatisch löschen beim Schließen
+      box->show();  // Nicht exec() verwenden!
+    });
+
+    status_label_->setVisible(false);
     cancel_run_button_->setVisible(false);
 
-    QMessageBox::information(this, "Fertig", "Alle Punkte wurden erfolgreich ausgeführt.");
     return;
   }
 
-  status_label_->setText("Status: Ausführen → " + pending_waypoints_.first());
+  QString next_point = pending_waypoints_.takeFirst();
+
+  status_label_->setText("Status: Ausführen → " + next_point);
   status_label_->setStyleSheet("font-weight: bold; color: orange;");
   status_label_->setVisible(true);
 
-  QString next_point = pending_waypoints_.takeFirst();
   RCLCPP_INFO(logger_, "Sende Punkt: %s", next_point.toStdString().c_str());
 
   for (int i = 0; i < point_list_->count(); ++i) {
@@ -653,6 +865,7 @@ void executeNextWaypoint()
 
   moveToPoint();
 }
+
  
 
 void openFileDialog() 
@@ -806,6 +1019,68 @@ void deletePoint()
 
   private:
   std::thread ros_thread_;  // Declare the ROS thread here
+  rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_state_sub_;
+  sensor_msgs::msg::JointState::SharedPtr latest_joint_state_;
+  QTimer* poll_timer_ = nullptr;
+
+  // Hintergrund-Joint-Listener
+  rclcpp::Node::SharedPtr listener_node_;
+  std::shared_ptr<rclcpp::executors::SingleThreadedExecutor> executor_;
+  std::thread ros_spin_thread_;
+
+  std::thread joint_listener_thread_;
+  std::atomic<bool> running_ = true;
+  rclcpp::Node::SharedPtr joint_listener_node_;
+ 
+  void fetchAndPrintJointStates()
+{
+  if (!latest_joint_state_) return;
+
+  qDebug() << "[JointState Ausgabe]";
+  for (size_t i = 0; i < latest_joint_state_->name.size(); ++i)
+  {
+    const std::string &joint_name = latest_joint_state_->name[i];
+    double position_rad = latest_joint_state_->position[i];
+
+    // Konvertieren: joint_1 → joint1 (wie im ROS-Topic)
+    QString qt_name = QString::fromStdString(joint_name);  // z. B. "joint1", "joint2", etc.
+
+    double value = 0.0;
+    QString value_str;
+
+    if (qt_name == "joint_plate") {
+      double mm = position_rad * 1000.0;
+      int percent = static_cast<int>(std::round(mm / 10.0 * 100.0));
+      percent = std::clamp(percent, 0, 100);
+      value_str = QString::number(percent) + "%";
+      value = percent;
+    } else {
+      value = position_rad * 180.0 / M_PI;  // deg
+      value_str = QString::number(value, 'f', 1) + "°";
+    }
+
+    qDebug() << qt_name << ": " << value_str;
+
+    if (joint_slider_map_.find(qt_name) != joint_slider_map_.end()) {
+      QSlider* slider = joint_slider_map_[qt_name];
+      QLabel* label = joint_label_map_[qt_name];
+
+      int slider_val = static_cast<int>(std::round(value));
+
+      if (slider) {
+        slider->blockSignals(true);
+        slider->setValue(slider_val);
+        slider->blockSignals(false);
+      }
+
+      if (label) {
+        label->setText(value_str);
+      }
+    }
+  }
+}
+
+  
 };
 
 }  // namespace rviz_teach_plugin
@@ -813,3 +1088,7 @@ void deletePoint()
 #include "teach_plugin.moc"
 #include <pluginlib/class_list_macros.hpp>
 PLUGINLIB_EXPORT_CLASS(rviz_teach_plugin::CustomPlugin, rviz_common::Panel)
+  std::map<std::string, QSlider *> joint_sliders_;
+  QSlider *gripper_slider_ = nullptr;
+  QTabWidget *tab_widget_;
+
