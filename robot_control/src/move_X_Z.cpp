@@ -5,21 +5,23 @@
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include "rviz_services/srv/move_linear.hpp"  // Custom service type
 
-// Function for moving to a target pose
-void move_to_position(moveit::planning_interface::MoveGroupInterface& move_group, 
-                      const geometry_msgs::msg::Pose& target_pose,
-                      const std::string& logger_name) {
+    // Function for moving to a target pose
+    bool move_to_position(moveit::planning_interface::MoveGroupInterface& move_group, 
+        const geometry_msgs::msg::Pose& target_pose,
+        const std::string& logger_name) {
     move_group.setPlannerId("RRTConnectConfigDefault");
-    move_group.setNumPlanningAttempts(5);
+    move_group.setNumPlanningAttempts(3);
     move_group.setPoseTarget(target_pose);
 
     bool success = static_cast<bool>(move_group.move());
     if (success) {
-        RCLCPP_INFO(rclcpp::get_logger(logger_name), "Movement successful");
+    RCLCPP_INFO(rclcpp::get_logger(logger_name), "Movement successful");
     } else {
-        RCLCPP_ERROR(rclcpp::get_logger(logger_name), "Movement failed");
+    RCLCPP_ERROR(rclcpp::get_logger(logger_name), "Movement failed");
     }
-}
+    return success;
+    }
+
 
 class RobotArmService : public rclcpp::Node {
 public:
@@ -40,8 +42,8 @@ private:
         move_group_robot_arm_ = std::make_shared<moveit::planning_interface::MoveGroupInterface>(
             shared_from_this(), "robot_arm");
         move_group_robot_arm_->setPlannerId("RRTConnectConfigDefault");
-        move_group_robot_arm_->setPlanningTime(100.0);
-        move_group_robot_arm_->setNumPlanningAttempts(10);
+        move_group_robot_arm_->setPlanningTime(5.0);
+        move_group_robot_arm_->setNumPlanningAttempts(3);
 
         init_timer_->cancel(); // Stop the timer after initialization
     }
@@ -95,10 +97,11 @@ private:
             return;
         }
 
-        // Move the robot arm to the new pose
-        move_to_position(*move_group_robot_arm_, pose_base_link.pose, "pose_setter");
+    // Move the robot arm to the new pose
+    bool movement_success = move_to_position(*move_group_robot_arm_, pose_base_link.pose, "pose_setter");
+    response->success = movement_success;
 
-        response->success = true;
+
     }
 
     std::shared_ptr<moveit::planning_interface::MoveGroupInterface> move_group_robot_arm_;

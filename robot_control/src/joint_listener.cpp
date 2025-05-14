@@ -42,7 +42,7 @@ public:
         response->message = "Bewegung gestoppt.";
         RCLCPP_WARN(node_->get_logger(), "Bewegung wurde durch externen Befehl abgebrochen.");
       }
-    );
+    );  
  
     RCLCPP_INFO(node_->get_logger(), "joint_listener gestartet und hört auf /target_joint_states");
   }
