@@ -56,6 +56,12 @@ ament_target_dependencies(move_X_Z rclcpp sensor_msgs moveit_ros_planning_interf
 
 install(TARGETS move_X_Z
   DESTINATION lib/${PROJECT_NAME})
+
+add_executable(move_to_pose src/move_to_pose.cpp)
+ament_target_dependencies(move_to_pose rclcpp sensor_msgs moveit_ros_planning_interface)
+
+install(TARGETS move_to_pose
+  DESTINATION lib/${PROJECT_NAME})
   
 add_executable(send_all_joints src/send_all_joints.cpp)
 ament_target_dependencies(send_all_joints rclcpp moveit_msgs rclcpp_action)
@@ -81,6 +87,9 @@ ament_target_dependencies(
 )
 
 target_link_libraries(move_X_Z
+  rviz_services::rviz_services__rosidl_typesupport_cpp
+)
+target_link_libraries(move_to_pose
   rviz_services::rviz_services__rosidl_typesupport_cpp
 )
 include_directories(

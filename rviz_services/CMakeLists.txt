@@ -17,6 +17,7 @@ find_package(rosidl_typesupport_cpp REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/GetPoseRobotArm.srv"
   "srv/MoveLinear.srv"
+  "srv/MoveToPose.srv"
   DEPENDENCIES std_msgs
 )
 
