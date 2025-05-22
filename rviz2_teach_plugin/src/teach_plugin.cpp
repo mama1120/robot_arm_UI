@@ -448,7 +448,7 @@ void onInitialize() override
       ros_spin_thread_ = std::thread([this]() {
           executor_->spin();
       });
-  
+      /*
       // Timer zur regelmäßigen Ausgabe (läuft im Qt-Thread!)
       QTimer* timer = new QTimer(this);
       connect(timer, &QTimer::timeout, this, [this]() {
@@ -462,6 +462,7 @@ void onInitialize() override
           }
       });
       timer->start(500);
+      */
   }
   
   
@@ -1035,7 +1036,7 @@ void deletePoint()
   void fetchAndPrintJointStates()
 {
   if (!latest_joint_state_) return;
-
+  /*
   qDebug() << "[JointState Ausgabe]";
   for (size_t i = 0; i < latest_joint_state_->name.size(); ++i)
   {
@@ -1078,6 +1079,7 @@ void deletePoint()
       }
     }
   }
+    */
 }
 
   
