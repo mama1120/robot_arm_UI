@@ -2,7 +2,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <memory>
 
-// Include your actual service message header
+// Include your service message header
 #include <rviz_services/srv/move_to_pose.hpp>
 
 using moveit::planning_interface::MoveGroupInterface;
@@ -17,25 +17,25 @@ public:
 
 private:
   void initialize() {
-    // Initialize MoveGroupInterface with base_link frame
     move_group_ = std::make_shared<MoveGroupInterface>(
       shared_from_this(),
       "robot_arm"
     );
     
-    // Configure frame settings correctly
-    move_group_->setPoseReferenceFrame("base_link");  // Set reference frame for poses
-    move_group_->setEndEffectorLink("link4_1");       // Set your end effector link
+    // Configure position-only planning
+    move_group_->setPoseReferenceFrame("base_link");
+    move_group_->setEndEffectorLink("link4_1");
     move_group_->setPlannerId("RRTConnectConfigDefault");
-    move_group_->setPlanningTime(10.0);
-    move_group_->setNumPlanningAttempts(5);
+    move_group_->setPlanningTime(15.0);  // Increased planning time
+    move_group_->setNumPlanningAttempts(20);  // More attempts
+    move_group_->setGoalPositionTolerance(0.01);  // 1cm position tolerance
 
     service_ = this->create_service<rviz_services::srv::MoveToPose>(
       "move_to_pose",
       std::bind(&MoveToPoseNode::move_to_pose_callback, this,
                 std::placeholders::_1, std::placeholders::_2));
     
-    RCLCPP_INFO(this->get_logger(), "Service initialized in base_link frame");
+    RCLCPP_INFO(this->get_logger(), "Position-only service initialized");
     init_timer_->cancel();
   }
 
@@ -43,28 +43,27 @@ private:
     const std::shared_ptr<rviz_services::srv::MoveToPose::Request> request,
     const std::shared_ptr<rviz_services::srv::MoveToPose::Response> response) {
     
-    // Create pose stamped message with base_link frame
-    geometry_msgs::msg::PoseStamped target_pose;
-    target_pose.header.frame_id = "base_link";  // Set the frame_id to base_link
-    target_pose.pose.position.x = request->x;
-    target_pose.pose.position.y = request->y;
-    target_pose.pose.position.z = request->z;
+    // Set position target only (ignore orientation)
+    geometry_msgs::msg::Point target_position;
+    target_position.x = request->x;
+    target_position.y = request->y;
+    target_position.z = request->z;
 
-    // Orientation from your original positions
-    target_pose.pose.orientation.w = 1.0;
-    target_pose.pose.orientation.x = 0.0;
-    target_pose.pose.orientation.y = 0.0;
-    target_pose.pose.orientation.z = 0.0;
-
-    move_group_->setPoseTarget(target_pose);
+    // Clear any previous pose targets
+    move_group_->clearPoseTargets();
+    
+    // Set position target with end effector link
+    move_group_->setPositionTarget(target_position.x, target_position.y, target_position.z, move_group_->getEndEffectorLink());
+    
+    // Execute movement
     auto const result = move_group_->move();
     
     response->success = (result == moveit::core::MoveItErrorCode::SUCCESS);
 
     if (response->success) {
-      RCLCPP_INFO(this->get_logger(), "Movement in base_link frame succeeded");
+      RCLCPP_INFO(this->get_logger(), "Position movement succeeded");
     } else {
-      RCLCPP_ERROR(this->get_logger(), "Movement in base_link frame failed");
+      RCLCPP_ERROR(this->get_logger(), "Position movement failed");
     }
   }
 

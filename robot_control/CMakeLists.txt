@@ -32,6 +32,12 @@ ament_target_dependencies(multiple_positions rclcpp sensor_msgs moveit_ros_plann
 install(TARGETS multiple_positions
   DESTINATION lib/${PROJECT_NAME})
 
+  add_executable(ik_demo src/ik_demo.cpp)
+ament_target_dependencies(ik_demo rclcpp sensor_msgs moveit_ros_planning_interface)
+
+install(TARGETS ik_demo
+  DESTINATION lib/${PROJECT_NAME})
+
   add_executable(forward_kinematic src/forward_kinematic.cpp)
 ament_target_dependencies(forward_kinematic rclcpp sensor_msgs moveit_ros_planning_interface)
 
