@@ -1,9 +1,7 @@
 float64 x
 float64 y
 float64 z
-float64 w
-float64 w_x
-float64 w_y
-float64 w_z
+float64 theta  # Joint4 rotation in degrees
+bool apply_theta  # Whether to apply the theta rotation
 ---
 bool success
