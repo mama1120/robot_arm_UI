@@ -1036,8 +1036,8 @@ void deletePoint()
   void fetchAndPrintJointStates()
 {
   if (!latest_joint_state_) return;
-  /*
-  qDebug() << "[JointState Ausgabe]";
+  
+  //qDebug() << "[JointState Ausgabe]";
   for (size_t i = 0; i < latest_joint_state_->name.size(); ++i)
   {
     const std::string &joint_name = latest_joint_state_->name[i];
@@ -1060,7 +1060,7 @@ void deletePoint()
       value_str = QString::number(value, 'f', 1) + "°";
     }
 
-    qDebug() << qt_name << ": " << value_str;
+    //qDebug() << qt_name << ": " << value_str;
 
     if (joint_slider_map_.find(qt_name) != joint_slider_map_.end()) {
       QSlider* slider = joint_slider_map_[qt_name];
@@ -1079,7 +1079,7 @@ void deletePoint()
       }
     }
   }
-    */
+
 }
 
   
