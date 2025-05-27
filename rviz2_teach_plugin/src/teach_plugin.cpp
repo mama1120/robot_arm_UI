@@ -1,4 +1,4 @@
-#include "../include/teach_plugin.hpp"
+#include "rviz2_teach_plugin/teach_plugin.hpp"
 #include <chrono>
 #include <random>
 
@@ -674,6 +674,14 @@ void rviz_teach_plugin::CustomPlugin::sendMovementRequest(bool is_x_direction, b
     // Wait for the 'move_linear' service to be available (timeout after 2 seconds)
     if (!move_linear_client_->wait_for_service(std::chrono::seconds(2))) {
         RCLCPP_ERROR(logger_, "Service move_linear not available");
+        
+        // Display error message to the user
+        QMessageBox::warning(
+            this,
+            "Service Unavailable",
+            "The move_linear service is not available. Please check if the robot control node is running."
+        );
+        
         return;
     }
 
@@ -688,17 +696,32 @@ void rviz_teach_plugin::CustomPlugin::sendMovementRequest(bool is_x_direction, b
     // It will be positive or negative based on `is_positive`
     request->distance_mm = movement_step_size_ * (is_positive ? 1.0 : -1.0);
 
+    // Create direction description for user messages
+    QString directionDesc = QString("%1%2").arg(
+        is_x_direction ? "X" : "Z",
+        is_positive ? "+" : "-");
+
     // Send the service request asynchronously
     auto future = move_linear_client_->async_send_request(
         request,
         // Lambda callback to handle the service response
-        [this, direction = request->direction](rclcpp::Client<rviz_services::srv::MoveLinear>::SharedFuture response) {
+        [this, direction = request->direction, directionDesc](rclcpp::Client<rviz_services::srv::MoveLinear>::SharedFuture response) {
             if (response.get()->success) {
                 // Log success message
                 RCLCPP_INFO(logger_, "Move %s successful", direction.c_str());
             } else {
                 // Log error message
                 RCLCPP_ERROR(logger_, "Move %s failed", direction.c_str());
+                
+                // Show a warning message box in the Qt thread
+                QMetaObject::invokeMethod(this, [this, directionDesc]() {
+                    QMessageBox::warning(
+                        this,
+                        "Movement Not Possible",
+                        QString("Cannot move in %1 direction. The robot has probably reached its kinematic limits in this direction.")
+                            .arg(directionDesc)
+                    );
+                }, Qt::QueuedConnection);
             }
         }
     );
@@ -708,6 +731,14 @@ void rviz_teach_plugin::CustomPlugin::onMoveToHome()
     // Wait for the 'move_to_home' service to be available (timeout after 2 seconds)
     if (!home_client_->wait_for_service(std::chrono::seconds(2))) {
         RCLCPP_ERROR(logger_, "Service /move_to_home not available");
+        
+        // Display error message to the user
+        QMessageBox::warning(
+            this,
+            "Service Unavailable",
+            "The move_to_home service is not available. Please check if the robot control node is running."
+        );
+        
         return;
     }
 
@@ -728,6 +759,16 @@ void rviz_teach_plugin::CustomPlugin::onMoveToHome()
             } else {
                 // Log error message with details
                 RCLCPP_ERROR(logger_, "Move to home failed: %s", response.get()->message.c_str());
+                
+                // Show a warning message box in the Qt thread with the error message from the service
+                QMetaObject::invokeMethod(this, [this, message = response.get()->message]() {
+                    QMessageBox::warning(
+                        this,
+                        "Home Movement Failed",
+                        QString("Failed to move robot to home position: %1")
+                            .arg(QString::fromStdString(message))
+                    );
+                }, Qt::QueuedConnection);
             }
         }
     );
