@@ -3,6 +3,7 @@ project(rviz2_teach_plugin)
 
 find_package(ament_cmake REQUIRED)
 find_package(rviz_common REQUIRED)
+find_package(rviz_rendering REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(Qt5 REQUIRED COMPONENTS Core Gui Widgets)
@@ -11,38 +12,34 @@ find_package(std_srvs REQUIRED)
 find_package(geometry_msgs REQUIRED)  
 find_package(rviz_services REQUIRED)
 
-
-
-
-
+# Setup Qt Automoc, Autorcc and Include directories
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
+# Include directories
 include_directories(include)
-# Für service
-include_directories(
-  ${rviz_services_INCLUDE_DIRS}
-)
+include_directories(${rviz_services_INCLUDE_DIRS})
 
-
-# Add the correct source file
+# Add the library target
 add_library(${PROJECT_NAME} SHARED
   src/teach_plugin.cpp
+  include/rviz2_teach_plugin/teach_plugin.hpp
 )
 
+# Set dependencies
 ament_target_dependencies(${PROJECT_NAME}
   rclcpp
   rviz_common
-  rviz_rendering  # Add this
+  rviz_rendering
   pluginlib
   Qt5Core
   Qt5Gui
   Qt5Widgets
   interactive_markers
   std_srvs
-  geometry_msgs  # Add this
-  rviz_services  # Add this
+  geometry_msgs
+  rviz_services
 )
 
 # Export pluginlib descriptions
