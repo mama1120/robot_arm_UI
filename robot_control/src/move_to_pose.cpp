@@ -150,3 +150,4 @@ int main(int argc, char** argv) {
   rclcpp::shutdown();
   return 0;
 }
+//ros2 service call /move_to_pose rviz_services/srv/MoveToPose "{x: 0.3, y: 0.0, z: 0.4, theta: 55.0, apply_theta: true}"
