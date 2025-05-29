@@ -84,6 +84,54 @@ private:
     }
     
     RCLCPP_INFO(this->get_logger(), "Position movement succeeded");
+    
+    // If theta rotation is requested, adjust joint4
+    if (request->apply_theta) {
+      // Wait to ensure we have latest joint states after position movement
+      rclcpp::sleep_for(std::chrono::milliseconds(500));
+      
+      // Check if we have joint state information
+      if (!latest_joint_state_ || latest_joint_state_->name.empty()) {
+        RCLCPP_ERROR(this->get_logger(), "No joint state information available for joint4 adjustment");
+        response->success = true;  // Position movement succeeded
+        return;
+      }
+      
+      // Find joint4 in the joint state message
+      int joint4_index = -1;
+      for (size_t i = 0; i < latest_joint_state_->name.size(); ++i) {
+        if (latest_joint_state_->name[i] == "joint4") {
+          joint4_index = static_cast<int>(i);
+          break;
+        }
+      }
+      
+      if (joint4_index == -1) {
+        RCLCPP_ERROR(this->get_logger(), "joint4 not found in joint states");
+        response->success = true;  // Position movement succeeded
+        return;
+      }
+      
+      // Get target theta value (absolute joint angle)
+      double target_joint4_value = request->theta * M_PI / 180.0;  // Convert to radians
+      
+      RCLCPP_INFO(this->get_logger(), "Setting joint4 to: %.3f degrees (%.3f radians)",
+                  request->theta, target_joint4_value);
+      
+      // Set joint value target for joint4
+      move_group_->setJointValueTarget("joint4", target_joint4_value);
+      
+      // Execute joint movement
+      auto joint_result = move_group_->move();
+      
+      if (joint_result == moveit::core::MoveItErrorCode::SUCCESS) {
+        RCLCPP_INFO(this->get_logger(), "Joint4 adjustment succeeded");
+      } else {
+        RCLCPP_ERROR(this->get_logger(), "Joint4 adjustment failed");
+        // Still return success since position movement succeeded
+      }
+    }
+    
     response->success = true;
   }
 
