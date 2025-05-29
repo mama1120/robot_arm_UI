@@ -31,11 +31,19 @@ def generate_launch_description():
         name='joint_listener_node',
         output='screen'
     )
+
+    move_to_pose_node = Node(
+        package='robot_control',
+        executable='move_to_pose',
+        name='move_to_pose_node',
+        output='screen'
+    )
     
     # Return the launch description with all the nodes and demo launch
     return LaunchDescription([
         moveit_demo_launch,
         move_home_node,
         move_X_Z_node,
-        joint_listener_node
+        joint_listener_node,
+        move_to_pose_node
     ])

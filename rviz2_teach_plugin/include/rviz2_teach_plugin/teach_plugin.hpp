@@ -28,10 +28,13 @@
 #include <sensor_msgs/msg/joint_state.hpp>
 #include <std_msgs/msg/string.hpp>
 #include "rviz_services/srv/move_linear.hpp"
+#include "rviz_services/srv/move_to_pose.hpp"
 #include <rviz_common/display_context.hpp>
 #include <thread>
 #include <atomic>
 #include <map>
+#include <tf2_ros/buffer.h>
+#include <tf2_ros/transform_listener.h>
 
 namespace rviz_teach_plugin
 {
@@ -80,6 +83,7 @@ private Q_SLOTS:
     void sendMovementRequest(bool is_x_direction, bool is_positive);
     void onMoveToHome();
     void setStepSize(int index);
+    void moveToPose();  
 
     // ============================
     // Load File Tab Functions
@@ -102,17 +106,26 @@ private Q_SLOTS:
     sensor_msgs::msg::JointState::SharedPtr fetchJointStates(const std::string &node_name, int timeout_seconds);
     bool pointExists(const QString &name);
     void fetchAndPrintJointStates();
+    void fetchCurrentPose();  
+
 
 private:
     // ROS2 node and logger
     rclcpp::Node::SharedPtr node_;
     rclcpp::Logger logger_ = rclcpp::get_logger("CustomPlugin");
+    
+    // TF2 buffer and listener
+    std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
+    std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 
     // UI elements
     QListWidget* point_list_;
     QLineEdit* file_path_edit_;
     QLabel* status_label_;
     QPushButton* cancel_run_button_;
+    QLineEdit* x_coord_edit_;  
+    QLineEdit* y_coord_edit_;  
+    QLineEdit* z_coord_edit_;  
 
     // ROS2 publishers, subscribers, and clients
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pose_publisher_;
@@ -135,6 +148,7 @@ private:
     // Service clients for linear and home movements
     rclcpp::Client<rviz_services::srv::MoveLinear>::SharedPtr move_linear_client_;
     rclcpp::Client<std_srvs::srv::SetBool>::SharedPtr home_client_;
+    rclcpp::Client<rviz_services::srv::MoveToPose>::SharedPtr move_to_pose_client_;
     
     // ROS2 threading and execution
     std::thread ros_thread_;

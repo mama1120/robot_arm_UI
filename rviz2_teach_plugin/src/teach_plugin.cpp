@@ -22,6 +22,11 @@ rviz_teach_plugin::CustomPlugin::CustomPlugin(QWidget *parent)
     pose_publisher_ = node_->create_publisher<geometry_msgs::msg::PoseStamped>("move_robot", 10);
     joint_pub_ = node_->create_publisher<sensor_msgs::msg::JointState>("target_joint_states", 10);
     cancel_motion_client_ = node_->create_client<std_srvs::srv::Trigger>("cancel_motion");
+     
+    // Initialize TF2 buffer and listener
+    tf_buffer_ = std::make_shared<tf2_ros::Buffer>(node_->get_clock());
+    tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+
 
     // Start joint state listener
     setup_joint_state_listener();
@@ -29,6 +34,7 @@ rviz_teach_plugin::CustomPlugin::CustomPlugin(QWidget *parent)
     // Create service clients
     move_linear_client_ = node_->create_client<rviz_services::srv::MoveLinear>("move_linear");
     home_client_ = node_->create_client<std_srvs::srv::SetBool>("move_to_home");
+    move_to_pose_client_ = node_->create_client<rviz_services::srv::MoveToPose>("move_to_pose");
 
     // Create main UI layout
     auto *tab_widget = new QTabWidget;
@@ -151,6 +157,40 @@ rviz_teach_plugin::CustomPlugin::CustomPlugin(QWidget *parent)
         sendSliderJointState();
     });
 
+    // Add coordinate input fields for move_to_pose in a single row
+    auto *coordinate_layout = new QHBoxLayout;
+    
+    // X coordinate
+    x_coord_edit_ = new QLineEdit;
+    x_coord_edit_->setPlaceholderText("X");
+    
+    // Y coordinate
+    y_coord_edit_ = new QLineEdit;
+    y_coord_edit_->setPlaceholderText("Y");
+    
+    // Z coordinate
+    z_coord_edit_ = new QLineEdit;
+    z_coord_edit_->setPlaceholderText("Z");
+    
+    // Move to pose button
+    auto *move_to_pose_button = new QPushButton("Move");
+    move_to_pose_button->setFixedWidth(80); 
+    
+    // Get current position button
+    auto *get_position_button = new QPushButton("Get Pos");
+    get_position_button->setFixedWidth(80);
+    
+    // Add all elements to the horizontal layout
+    coordinate_layout->addWidget(x_coord_edit_);
+    coordinate_layout->addWidget(y_coord_edit_);
+    coordinate_layout->addWidget(z_coord_edit_);
+    coordinate_layout->addWidget(move_to_pose_button);
+    coordinate_layout->addWidget(get_position_button);
+    // Add a descriptive label before the layout
+    auto *coordinate_label = new QLabel("Move to global Position (m):");
+    move_layout->addWidget(coordinate_label);
+    move_layout->addLayout(coordinate_layout);
+
     // Add linear movement controls
     auto *lin_movement_label = new QLabel("Linear Movements:");
     move_layout->addWidget(lin_movement_label);
@@ -173,6 +213,7 @@ rviz_teach_plugin::CustomPlugin::CustomPlugin(QWidget *parent)
     auto *move_z_button = new QPushButton("Z+");
     auto *move_z_neg_button = new QPushButton("Z-");
     auto *home_button = new QPushButton("Home");
+
     lin_layout->addWidget(move_x_button);
     lin_layout->addWidget(move_x_neg_button);
     lin_layout->addWidget(move_z_button);
@@ -229,6 +270,9 @@ rviz_teach_plugin::CustomPlugin::CustomPlugin(QWidget *parent)
     connect(move_z_neg_button, &QPushButton::clicked, this, [this]() { sendMovementRequest(false, false); });
     connect(home_button, &QPushButton::clicked, this, &CustomPlugin::onMoveToHome);
     connect(cancel_run_button_, &QPushButton::clicked, this, &CustomPlugin::cancelExecution);
+    connect(move_to_pose_button, &QPushButton::clicked, this, &CustomPlugin::moveToPose);
+    connect(get_position_button, &QPushButton::clicked, this, &CustomPlugin::fetchCurrentPose);
+
 
     // Start the ROS2 node in a separate thread
     ros_thread_ = std::thread([this]() { rclcpp::spin(node_); });
@@ -786,6 +830,80 @@ void rviz_teach_plugin::CustomPlugin::setStepSize(int index)
     }
 }
 
+void rviz_teach_plugin::CustomPlugin::moveToPose()
+{
+    // Wait for the service to be available
+    if (!move_to_pose_client_->wait_for_service(std::chrono::seconds(2))) {
+        RCLCPP_ERROR(logger_, "Service move_to_pose not available");
+        
+        QMessageBox::warning(
+            this,
+            "Service Unavailable",
+            "The move_to_pose service is not available. Please check if the robot control node is running."
+        );
+        
+        return;
+    }
+
+    // Get coordinate values from input fields
+    bool x_ok = false, y_ok = false, z_ok = false;
+    double x = x_coord_edit_->text().toDouble(&x_ok);
+    double y = y_coord_edit_->text().toDouble(&y_ok);
+    double z = z_coord_edit_->text().toDouble(&z_ok);
+
+    // Validate input
+    if (!x_ok || !y_ok || !z_ok) {
+        QMessageBox::warning(
+            this,
+            "Invalid Input",
+            "Please enter valid numeric values for X, Y, and Z coordinates."
+        );
+        return;
+    }
+
+    // Create a service request
+    auto request = std::make_shared<rviz_services::srv::MoveToPose::Request>();
+    request->x = x;
+    request->y = y;
+    request->z = z;
+
+    RCLCPP_INFO(logger_, "Sending move_to_pose request: X=%.2f, Y=%.2f, Z=%.2f", x, y, z);
+
+    // Send the service request asynchronously
+    auto future = move_to_pose_client_->async_send_request(
+        request,
+        [this, x, y, z](rclcpp::Client<rviz_services::srv::MoveToPose>::SharedFuture response) {
+            if (response.get()->success) {
+                RCLCPP_INFO(logger_, "Move to pose successful");
+                
+                // Show success message in Qt thread
+                QMetaObject::invokeMethod(this, [this]() {
+                    status_label_->setText("Status: Move to pose successful");
+                    status_label_->setStyleSheet("font-weight: bold; color: green;");
+                    status_label_->setVisible(true);
+                    
+                    // Hide the status after 3 seconds
+                    QTimer::singleShot(3000, this, [this]() {
+                        status_label_->setVisible(false);
+                    });
+                }, Qt::QueuedConnection);
+                
+            } else {
+                RCLCPP_ERROR(logger_, "Move to pose failed");
+                
+                // Show error message in Qt thread
+                QMetaObject::invokeMethod(this, [this, x, y, z]() {
+                    QMessageBox::warning(
+                        this,
+                        "Move to Pose Failed",
+                        QString("Failed to move to position. The position may be unreachable.")
+                    );
+                }, Qt::QueuedConnection);
+            }
+        }
+    );
+}
+
 // ============================
 // Load File Tab Functions
 // ============================
@@ -1134,7 +1252,46 @@ void rviz_teach_plugin::CustomPlugin::fetchAndPrintJointStates()
         }
     }
 }
+void rviz_teach_plugin::CustomPlugin::fetchCurrentPose()
+{
+    try {
+        // Look up the transform from base_link to link4_1 (end effector)
+        geometry_msgs::msg::TransformStamped transform = 
+            tf_buffer_->lookupTransform("base_link", "link4_1", tf2::TimePointZero);
 
+        // Extract position from the transform
+        double x = transform.transform.translation.x;
+        double y = transform.transform.translation.y;
+        double z = transform.transform.translation.z;
+
+        // Update the text fields with the position data (using 3 decimal places)
+        x_coord_edit_->setText(QString::number(x, 'f', 3));
+        y_coord_edit_->setText(QString::number(y, 'f', 3));
+        z_coord_edit_->setText(QString::number(z, 'f', 3));
+
+        RCLCPP_INFO(logger_, "Current end effector position: X=%.3f, Y=%.3f, Z=%.3f", x, y, z);
+        
+        // Show a brief status message
+        status_label_->setText("Status: Current position fetched");
+        status_label_->setStyleSheet("font-weight: bold; color: green;");
+        status_label_->setVisible(true);
+        
+        // Hide the status after 2 seconds
+        QTimer::singleShot(2000, this, [this]() {
+            status_label_->setVisible(false);
+        });
+    }
+    catch (const tf2::TransformException &ex) {
+        RCLCPP_ERROR(logger_, "Could not transform from base_link to link4_1: %s", ex.what());
+        
+        // Show an error message
+        QMessageBox::warning(
+            this,
+            "Transform Unavailable",
+            QString("Failed to get the current position: %1").arg(ex.what())
+        );
+    }
+}
 // ============================
 // Plugin Export
 // ============================
