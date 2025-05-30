@@ -173,12 +173,10 @@ rviz_teach_plugin::CustomPlugin::CustomPlugin(QWidget *parent)
     z_coord_edit_->setPlaceholderText("Z");
     
     // Move to pose button
-    auto *move_to_pose_button = new QPushButton("Move");
-    move_to_pose_button->setFixedWidth(80); 
+    auto *move_to_pose_button = new QPushButton("Move to Pos");
     
     // Get current position button
     auto *get_position_button = new QPushButton("Get Pos");
-    get_position_button->setFixedWidth(80);
     
     // Add all elements to the horizontal layout
     coordinate_layout->addWidget(x_coord_edit_);
