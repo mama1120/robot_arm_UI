@@ -12,7 +12,11 @@
 #include <vector>
 #include <cmath>
 #include <random>
+#include <iomanip>
+#include <sstream>
+#include <thread>
 #include <sensor_msgs/msg/joint_state.hpp>
+#include <moveit_msgs/msg/constraints.hpp>
 
 // Constants with corrected orientation
 constexpr double MIN_RADIUS = 0.38;
@@ -132,8 +136,9 @@ void move_to_ball(moveit::planning_interface::MoveGroupInterface& move_group,
     approach_position.y = ball_pose.position.y;
     approach_position.z = ball_pose.position.z + APPROACH_HEIGHT;
     
-    // Clear any previous pose targets
+    // Clear any previous pose targets and constraints
     move_group.clearPoseTargets();
+    move_group.clearPathConstraints();
     
     // Set approach position target (position only)
     RCLCPP_INFO(rclcpp::get_logger(logger_name), 
@@ -158,6 +163,134 @@ void move_to_ball(moveit::planning_interface::MoveGroupInterface& move_group,
     }
     
     // Clear targets again
+    move_group.clearPoseTargets();
+}
+
+void move_to_ball_keep_joint4_fixed(moveit::planning_interface::MoveGroupInterface& move_group, 
+                                    const geometry_msgs::msg::Pose& ball_pose,
+                                    const sensor_msgs::msg::JointState::SharedPtr& latest_joint_state,
+                                    const std::string& logger_name) {
+    // Set position-only tolerances
+    move_group.setGoalPositionTolerance(0.01);  // 1cm position tolerance
+    
+    // Calculate approach position
+    geometry_msgs::msg::Point approach_position;
+    approach_position.x = ball_pose.position.x;
+    approach_position.y = ball_pose.position.y;
+    approach_position.z = ball_pose.position.z + APPROACH_HEIGHT;
+    
+    // Clear any previous pose targets and constraints
+    move_group.clearPoseTargets();
+    move_group.clearPathConstraints();
+    
+    // Get current joint4 value to fix it during planning
+    double current_joint4_value = 0.0;
+    if (latest_joint_state != nullptr) {
+        for (size_t i = 0; i < latest_joint_state->name.size(); ++i) {
+            if (latest_joint_state->name[i] == "joint4") {
+                current_joint4_value = latest_joint_state->position[i];
+                break;
+            }
+        }
+    }
+    
+    // Create joint constraint to keep joint4 fixed
+    moveit_msgs::msg::Constraints joint_constraints;
+    moveit_msgs::msg::JointConstraint joint4_constraint;
+    joint4_constraint.joint_name = "joint4";
+    joint4_constraint.position = current_joint4_value;
+    joint4_constraint.tolerance_above = 0.01;  // Small tolerance (about 0.6 degrees)
+    joint4_constraint.tolerance_below = 0.01;
+    joint4_constraint.weight = 1.0;  // High priority
+    
+    joint_constraints.joint_constraints.push_back(joint4_constraint);
+    
+    // Apply the constraints
+    move_group.setPathConstraints(joint_constraints);
+    
+    RCLCPP_INFO(rclcpp::get_logger(logger_name), 
+                "Moving to approach position (%.2f, %.2f, %.2f) while keeping joint4 fixed at %.3f rad (%.1f deg)",
+                approach_position.x, approach_position.y, approach_position.z,
+                current_joint4_value, current_joint4_value * 180.0 / M_PI);
+    
+    // Set approach position target (position only)
+    move_group.setPositionTarget(
+        approach_position.x, 
+        approach_position.y, 
+        approach_position.z, 
+        move_group.getEndEffectorLink()
+    );
+    
+    // Execute approach movement
+    auto approach_result = move_group.move();
+    
+    if(approach_result == moveit::core::MoveItErrorCode::SUCCESS) {
+        RCLCPP_INFO(rclcpp::get_logger(logger_name), "Approach movement successful with joint4 constraint");
+    } else {
+        RCLCPP_ERROR(rclcpp::get_logger(logger_name), "Approach movement failed with joint4 constraint");
+    }
+    
+    // Clear targets and constraints
+    move_group.clearPoseTargets();
+    move_group.clearPathConstraints();
+}
+
+void move_to_ball_using_joint_targets(moveit::planning_interface::MoveGroupInterface& move_group, 
+                                      const geometry_msgs::msg::Pose& ball_pose,
+                                      const sensor_msgs::msg::JointState::SharedPtr& latest_joint_state,
+                                      const std::string& logger_name) {
+    if (latest_joint_state == nullptr || latest_joint_state->name.empty()) {
+        RCLCPP_ERROR(rclcpp::get_logger(logger_name), "No joint state information available");
+        return;
+    }
+    
+    // Calculate approach position
+    geometry_msgs::msg::Point approach_position;
+    approach_position.x = ball_pose.position.x;
+    approach_position.y = ball_pose.position.y;
+    approach_position.z = ball_pose.position.z + APPROACH_HEIGHT;
+    
+    // Clear any previous targets and constraints
+    move_group.clearPoseTargets();
+    move_group.clearPathConstraints();
+    
+    // Get current joint values
+    std::map<std::string, double> current_joints;
+    for (size_t i = 0; i < latest_joint_state->name.size(); ++i) {
+        current_joints[latest_joint_state->name[i]] = latest_joint_state->position[i];
+    }
+    
+    // Set position target first to get the robot close to the desired position
+    RCLCPP_INFO(rclcpp::get_logger(logger_name), 
+                "First step: Moving to approach position (%.2f, %.2f, %.2f) keeping joint4 at %.3f rad (%.1f deg)",
+                approach_position.x, approach_position.y, approach_position.z,
+                current_joints["joint4"], current_joints["joint4"] * 180.0 / M_PI);
+    
+    // Method 2A: Use setJointValueTarget with partial joint specification
+    // This allows you to specify values for some joints while letting the planner 
+    // figure out the others to reach the position target
+    
+    // First, set the position target
+    move_group.setPositionTarget(
+        approach_position.x, 
+        approach_position.y, 
+        approach_position.z, 
+        move_group.getEndEffectorLink()
+    );
+    
+    // Then constrain joint4 to its current value
+    move_group.setJointValueTarget("joint4", current_joints["joint4"]);
+    
+    // Execute the movement
+    auto approach_result = move_group.move();
+    
+    if(approach_result == moveit::core::MoveItErrorCode::SUCCESS) {
+        RCLCPP_INFO(rclcpp::get_logger(logger_name), "Approach movement successful using joint value target for joint4");
+    } else {
+        RCLCPP_ERROR(rclcpp::get_logger(logger_name), "Approach movement failed using joint value target for joint4");
+    }
+    
+    // Clear targets
     move_group.clearPoseTargets();
 }
 
@@ -402,6 +535,99 @@ void adjust_joint4_via_topic(const rclcpp::Publisher<sensor_msgs::msg::JointStat
         RCLCPP_ERROR(node->get_logger(), "Transform error: %s", ex.what());
     }
 }
+ 
+// Simple function to open the gripper
+void open_gripper(const rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr& joint_pub,
+                  const sensor_msgs::msg::JointState::SharedPtr& latest_joint_state,
+                  const rclcpp::Node::SharedPtr& node) {
+    RCLCPP_INFO(node->get_logger(), "Opening gripper...");
+    
+    if (latest_joint_state == nullptr || latest_joint_state->name.empty()) {
+        RCLCPP_ERROR(node->get_logger(), "No joint state information available");
+        return;
+    }
+    
+    // Create joint state message to publish
+    sensor_msgs::msg::JointState msg;
+    msg.header.stamp = node->now();
+    msg.header.frame_id = "gripper_open_command";
+    
+    // Order must match what the controller expects
+    msg.name = {"joint2", "joint3", "joint1", "joint4", "joint_plate"};
+    
+    // Initialize positions with current values
+    msg.position = {0.0, 0.0, 0.0, 0.0, 0.0};
+    
+    // Update values from the latest joint state
+    for (size_t i = 0; i < latest_joint_state->name.size(); ++i) {
+        const std::string& name = latest_joint_state->name[i];
+        double position = latest_joint_state->position[i];
+        
+        // Find index in our message
+        for (size_t j = 0; j < msg.name.size(); ++j) {
+            if (msg.name[j] == name) {
+                msg.position[j] = position;
+                break;
+            }
+        }
+    }
+    
+    // Set the gripper to fully open (1.0)
+    for (size_t j = 0; j < msg.name.size(); ++j) {
+        if (msg.name[j] == "joint_plate") {
+            msg.position[j] = 0.01;  // Fully open gripper
+            RCLCPP_INFO(node->get_logger(), "Setting joint_plate to 1.0 (fully open)");
+            break;
+        }
+    }
+    
+    // Publish the message
+    joint_pub->publish(msg);
+    RCLCPP_INFO(node->get_logger(), "Published gripper open command");
+}
+
+// Simplified function to move to ball position using tcp_link
+void move_to_ball_simple(moveit::planning_interface::MoveGroupInterface& move_group, 
+                        const geometry_msgs::msg::Pose& ball_pose,
+                        const std::string& logger_name) {
+    // Set position-only tolerances
+    move_group.setGoalPositionTolerance(0.01);  // 1cm position tolerance
+    
+    // Calculate target position (directly at ball position)
+    geometry_msgs::msg::Point target_position;
+    target_position.x = ball_pose.position.x;
+    target_position.y = ball_pose.position.y;
+    target_position.z = ball_pose.position.z;
+    
+    // Clear any previous pose targets and constraints
+    move_group.clearPoseTargets();
+    move_group.clearPathConstraints();
+    
+    RCLCPP_INFO(rclcpp::get_logger(logger_name), 
+                "Moving link4_1 to ball position (%.2f, %.2f, %.2f)",
+                target_position.x, target_position.y, target_position.z);
+    
+    // Set target position (position only, let MoveIt handle orientation)
+    move_group.setPositionTarget(
+        target_position.x, 
+        target_position.y, 
+        target_position.z, 
+        move_group.getEndEffectorLink()
+    );
+    
+    // Execute movement
+    auto result = move_group.move();
+    
+    if(result == moveit::core::MoveItErrorCode::SUCCESS) {
+        RCLCPP_INFO(rclcpp::get_logger(logger_name), "Successfully moved to ball position");
+    } else {
+        RCLCPP_ERROR(rclcpp::get_logger(logger_name), "Failed to move to ball position");
+    }
+    
+    // Clear targets
+    move_group.clearPoseTargets();
+}
+
 int main(int argc, char* argv[]) {
     rclcpp::init(argc, argv);
     auto node = std::make_shared<rclcpp::Node>(
@@ -433,6 +659,13 @@ int main(int argc, char* argv[]) {
         executor.spin_some(std::chrono::milliseconds(100));
     }
 
+    // Start the spin thread after initial setup
+    auto spin_thread = std::thread([&executor]() {
+        while (rclcpp::ok()) {
+            executor.spin_some();
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+    });
     
     // Initialize MoveIt interfaces
     moveit::planning_interface::PlanningSceneInterface planning_scene_interface;
@@ -440,13 +673,9 @@ int main(int argc, char* argv[]) {
     move_group.setPlannerId("RRTConnectConfigDefault");
     move_group.setPlanningTime(10.0);
     move_group.setNumPlanningAttempts(20);
-
-    auto spin_thread = std::thread([&executor]() {
-        while (rclcpp::ok()) {
-            executor.spin_some();
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        }
-    });
+    
+    // Set link4_1 as the end effector (tcp_link not recognized by MoveIt)
+    move_group.setEndEffectorLink("tcp_link");
     
     // Generate random ball position
     geometry_msgs::msg::Pose ball_pose = create_random_ball_pose();
@@ -464,50 +693,19 @@ int main(int argc, char* argv[]) {
     publish_ball_tf(ball_pose, node);
     RCLCPP_INFO(node->get_logger(), "Published static TF for ball visualization");
 
-    // Move to ball position
-    move_to_ball(move_group, ball_pose, "ball_picker");
+    // Simplified sequence:
+    // 1. Open the gripper
+    // 2. Move to ball position with tcp_link
     
-    // Calculate and display the transform difference
-    calculate_transform_difference(node, ball_pose);
+    RCLCPP_INFO(node->get_logger(), "\n=== Step 1: Opening gripper ===");
+    open_gripper(joint_pub, latest_joint_state, node);
     
-    // Wait to ensure we can see the output and receive joint states
-    RCLCPP_INFO(node->get_logger(), "Waiting for joint state updates...");
-    rclcpp::sleep_for(std::chrono::seconds(1));
-        
-// Print joint states from the ROS topic
-if (latest_joint_state != nullptr) {
-    RCLCPP_INFO(node->get_logger(), "Current joint states:");
+    // Wait for gripper to open
+    RCLCPP_INFO(node->get_logger(), "Waiting for gripper to open...");
+    rclcpp::sleep_for(std::chrono::seconds(3));
     
-    for (size_t i = 0; i < latest_joint_state->name.size(); ++i) {
-        const std::string &joint_name = latest_joint_state->name[i];
-        double position_rad = latest_joint_state->position[i];
-        
-        double value = 0.0;
-        std::string value_str;
-        
-        if (joint_name == "joint_plate") {
-            // Convert joint_plate position to percentage
-            double mm = position_rad * 1000.0;
-            int percent = static_cast<int>(std::round(mm / 10.0 * 100.0));
-            percent = std::clamp(percent, 0, 100);
-            value = percent;
-            value_str = std::to_string(percent) + "%";
-        } else {
-            // Convert radians to degrees for other joints
-            value = position_rad * 180.0 / M_PI;  // deg
-            std::stringstream ss;
-            ss << std::fixed << std::setprecision(1) << value << "°";
-            value_str = ss.str();
-        }
-        
-        RCLCPP_INFO(node->get_logger(), "  %s: %s", joint_name.c_str(), value_str.c_str());
-    }
-} else {
-    RCLCPP_WARN(node->get_logger(), "No joint state messages received yet");
-}
-
-    // Adjust joint4 orientation by publishing to target_joint_states topic
-    adjust_joint4_via_topic(joint_pub, latest_joint_state, node, ball_pose);
+    RCLCPP_INFO(node->get_logger(), "\n=== Step 2: Moving link4_1 to ball position ===");
+    move_to_ball_simple(move_group, ball_pose, "ball_picker");
     
     // Optional: Return to home position
     /*
@@ -522,6 +720,13 @@ if (latest_joint_state != nullptr) {
     }
     */
     
+    RCLCPP_INFO(node->get_logger(), "Task completed successfully!");
+    
+    // Clean shutdown
     rclcpp::shutdown();
+    if (spin_thread.joinable()) {
+        spin_thread.join();
+    }
+    
     return 0;
 }

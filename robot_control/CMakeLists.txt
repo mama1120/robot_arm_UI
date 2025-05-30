@@ -38,6 +38,12 @@ ament_target_dependencies(ik_demo rclcpp sensor_msgs moveit_ros_planning_interfa
 install(TARGETS ik_demo
   DESTINATION lib/${PROJECT_NAME})
 
+    add_executable(ik_demo_wrist src/ik_demo_wrist.cpp)
+ament_target_dependencies(ik_demo_wrist rclcpp sensor_msgs moveit_ros_planning_interface)
+
+install(TARGETS ik_demo_wrist
+  DESTINATION lib/${PROJECT_NAME})
+
   add_executable(forward_kinematic src/forward_kinematic.cpp)
 ament_target_dependencies(forward_kinematic rclcpp sensor_msgs moveit_ros_planning_interface)
 

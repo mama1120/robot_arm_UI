@@ -192,7 +192,15 @@
     </geometry>
   </collision>
 </link>
-
+<link name="tcp_link">
+  <visual>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <geometry>
+      <sphere radius="0.005"/>
+    </geometry>
+    <material name="blue"/>
+  </visual>
+</link>
 <joint name="joint1" type="revolute">
   <origin xyz="-0.01268 0.001996 0.10629" rpy="0 0 0"/>
   <parent link="base_link"/>
@@ -259,7 +267,12 @@
   <limit upper="0.349066" lower="0.0" effort="100.0" velocity="100"/>
   <mimic joint="joint_plate" multiplier="38.79"/>
 </joint>
-
+<joint name="tcp_fixed_joint" type="fixed">
+  <parent link="link4_1"/>
+  <child link="tcp_link"/>
+  <!-- Adjust the XYZ offset to place the TCP properly -->
+  <origin xyz="0.1 0 0" rpy="0 0 0"/>
+</joint>
 
 </robot>
 
