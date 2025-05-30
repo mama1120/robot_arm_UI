@@ -195,10 +195,6 @@
 <link name="tcp_link">
   <visual>
     <origin xyz="0 0 0" rpy="0 0 0"/>
-    <geometry>
-      <sphere radius="0.005"/>
-    </geometry>
-    <material name="blue"/>
   </visual>
 </link>
 <joint name="joint1" type="revolute">
