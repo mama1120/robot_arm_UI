@@ -1,6 +1,39 @@
 <?xml version="1.0" ?>
 <robot name="robot" xmlns:xacro="http://www.ros.org/wiki/xacro" >
 
+<transmission name="joint_finger1_tran">
+  <type>transmission_interface/SimpleTransmission</type>
+  <joint name="joint_finger1">
+    <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+  </joint>
+  <actuator name="joint_finger1_actr">
+    <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+    <mechanicalReduction>1</mechanicalReduction>
+  </actuator>
+</transmission>
+
+<transmission name="joint_finger2_tran">
+  <type>transmission_interface/SimpleTransmission</type>
+  <joint name="joint_finger2">
+    <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+  </joint>
+  <actuator name="joint_finger2_actr">
+    <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+    <mechanicalReduction>1</mechanicalReduction>
+  </actuator>
+</transmission>
+
+<transmission name="joint_finger3_tran">
+  <type>transmission_interface/SimpleTransmission</type>
+  <joint name="joint_finger3">
+    <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+  </joint>
+  <actuator name="joint_finger3_actr">
+    <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+    <mechanicalReduction>1</mechanicalReduction>
+  </actuator>
+</transmission>
+
 <transmission name="joint1_tran">
   <type>transmission_interface/SimpleTransmission</type>
   <joint name="joint1">
@@ -51,39 +84,6 @@
     <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
   </joint>
   <actuator name="joint_plate_actr">
-    <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
-    <mechanicalReduction>1</mechanicalReduction>
-  </actuator>
-</transmission>
-
-<transmission name="joint_finger1_tran">
-  <type>transmission_interface/SimpleTransmission</type>
-  <joint name="joint_finger1">
-    <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
-  </joint>
-  <actuator name="joint_finger1_actr">
-    <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
-    <mechanicalReduction>1</mechanicalReduction>
-  </actuator>
-</transmission>
-
-<transmission name="joint_finger2_tran">
-  <type>transmission_interface/SimpleTransmission</type>
-  <joint name="joint_finger2">
-    <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
-  </joint>
-  <actuator name="joint_finger2_actr">
-    <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
-    <mechanicalReduction>1</mechanicalReduction>
-  </actuator>
-</transmission>
-
-<transmission name="joint_finger3_tran">
-  <type>transmission_interface/SimpleTransmission</type>
-  <joint name="joint_finger3">
-    <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
-  </joint>
-  <actuator name="joint_finger3_actr">
     <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
     <mechanicalReduction>1</mechanicalReduction>
   </actuator>

@@ -5,9 +5,9 @@ moveit_setup_assistant_config:
   srdf:
     relative_path: config/robot.srdf
   package_settings:
-    author_name: Yannik Thomas
-    author_email: yannik26896@gmail.com
-    generated_timestamp: 1725386925
+    author_name: Max Mai
+    author_email: mama1120@h-ka.de
+    generated_timestamp: 1748693110
   control_xacro:
     command:
       - position

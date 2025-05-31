@@ -1,1 +1,4 @@
 transformer_state
+.vscode
+robot_robot_arm_ikfast_plugin
+robot_moveit_config/config/kinematics_IKfast.yaml

@@ -105,8 +105,8 @@ rviz_teach_plugin::CustomPlugin::CustomPlugin(QWidget *parent)
 
     const QMap<int, QPair<int, int>> joint_ranges = {
         {1, {-150, 150}},
-        {2, {-60, 55}},
-        {3, {-120, 120}},
+        {2, {0, 95}},
+        {3, {-115, 120}},
         {4, {-90, 100}}
     };
 
