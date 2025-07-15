@@ -164,6 +164,12 @@ private:
     std::thread joint_listener_thread_;
     std::atomic<bool> running_ = true;
     rclcpp::Node::SharedPtr joint_listener_node_;
+
+    // Add the missing timer declaration
+    QTimer* slider_update_timer_;
+
+    // Helper function to update joint state display
+    void updateJointStateDisplay();
 };
 
 }  // namespace rviz_teach_plugin

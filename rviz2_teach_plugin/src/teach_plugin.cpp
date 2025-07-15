@@ -121,6 +121,13 @@ rviz_teach_plugin::CustomPlugin::CustomPlugin(QWidget *parent)
         joint_slider->setRange(joint_ranges[i].first, joint_ranges[i].second);
         joint_slider->setValue(0);
         joint_slider->setObjectName(joint_name);
+        
+        // Improve slider responsiveness
+        joint_slider->setTickPosition(QSlider::TicksBelow);
+        joint_slider->setTickInterval(10);
+        joint_slider->setPageStep(5);
+        joint_slider->setSingleStep(1);
+        
         joint_slider_map_[joint_name] = joint_slider;
         joint_label_map_[joint_name] = joint_value;
         joint_layout->addWidget(joint_label);
@@ -128,18 +135,34 @@ rviz_teach_plugin::CustomPlugin::CustomPlugin(QWidget *parent)
         joint_layout->addWidget(joint_value);
         move_layout->addLayout(joint_layout);
 
-        // Connect slider to joint state update
+        // Connect slider signals for better responsiveness
+        connect(joint_slider, &QSlider::valueChanged, this, [this, joint_value](int value) {
+            // Update label immediately for visual feedback
+            joint_value->setText(QString::number(value) + "°");
+            // Debounce the actual joint command
+            slider_update_timer_->start();
+        });
+        
+        // Keep sliderReleased for immediate response when user stops dragging
         connect(joint_slider, &QSlider::sliderReleased, this, [this]() {
+            slider_update_timer_->stop();
             sendSliderJointState();
         });
     }
 
-    // Add gripper slider
+    // Add gripper slider with same improvements
     auto *gripper_label = new QLabel("Gripper Opening:");
     auto *gripper_slider = new QSlider(Qt::Horizontal);
     gripper_slider->setRange(0, 100);
     gripper_slider->setValue(0);
     gripper_slider->setObjectName("gripper");
+    
+    // Improve gripper slider responsiveness
+    gripper_slider->setTickPosition(QSlider::TicksBelow);
+    gripper_slider->setTickInterval(10);
+    gripper_slider->setPageStep(5);
+    gripper_slider->setSingleStep(1);
+    
     auto *gripper_value = new QLabel("0%");
     gripper_value->setFixedWidth(50);
     gripper_value->setObjectName("gripper_label");
@@ -153,7 +176,15 @@ rviz_teach_plugin::CustomPlugin::CustomPlugin(QWidget *parent)
     gripper_layout->addWidget(gripper_value);
     move_layout->addLayout(gripper_layout);
 
+    connect(gripper_slider, &QSlider::valueChanged, this, [this, gripper_value](int value) {
+        // Update label immediately for visual feedback
+        gripper_value->setText(QString::number(value) + "%");
+        // Debounce the actual joint command
+        slider_update_timer_->start();
+    });
+    
     connect(gripper_slider, &QSlider::sliderReleased, this, [this]() {
+        slider_update_timer_->stop();
         sendSliderJointState();
     });
 
@@ -211,12 +242,14 @@ rviz_teach_plugin::CustomPlugin::CustomPlugin(QWidget *parent)
     auto *move_z_button = new QPushButton("Z+");
     auto *move_z_neg_button = new QPushButton("Z-");
     auto *home_button = new QPushButton("Home");
+    auto *zero_button = new QPushButton("Zero");
 
     lin_layout->addWidget(move_x_button);
     lin_layout->addWidget(move_x_neg_button);
     lin_layout->addWidget(move_z_button);
     lin_layout->addWidget(move_z_neg_button);
     lin_layout->addWidget(home_button);
+    lin_layout->addWidget(zero_button);
     move_layout->addLayout(lin_layout);
 
     // Add waypoint button
@@ -270,7 +303,48 @@ rviz_teach_plugin::CustomPlugin::CustomPlugin(QWidget *parent)
     connect(cancel_run_button_, &QPushButton::clicked, this, &CustomPlugin::cancelExecution);
     connect(move_to_pose_button, &QPushButton::clicked, this, &CustomPlugin::moveToPose);
     connect(get_position_button, &QPushButton::clicked, this, &CustomPlugin::fetchCurrentPose);
+    connect(zero_button, &QPushButton::clicked, this, [this]() {
+        // Set all joint sliders to zero
+        for (const auto& pair : joint_slider_map_) {
+            QSlider* slider = pair.second;
+            if (slider) {
+                slider->blockSignals(true);
+                slider->setValue(0);
+                slider->blockSignals(false);
+            }
+        }
 
+        // Update all labels to show zero values
+        for (const auto& pair : joint_label_map_) {
+            QString joint_name = pair.first;
+            QLabel* label = pair.second;
+            if (label) {
+                if (joint_name == "joint_plate") {
+                    label->setText("0%");
+                } else {
+                    label->setText("0°");
+                }
+            }
+        }
+
+        // Create and publish a JointState message with all joints set to zero
+        sensor_msgs::msg::JointState msg;
+        msg.name = {"joint2", "joint3", "joint1", "joint4", "joint_plate"};
+        msg.position = {0.0, 0.0, 0.0, 0.0, 0.0}; // All joints to zero
+        msg.header.stamp = node_->now();
+        msg.header.frame_id = "zero_command";
+        
+        // Publish the message
+        joint_pub_->publish(msg);
+
+        RCLCPP_INFO(logger_, "All joints set to zero position");
+    });
+
+    // Add slider update timer for debouncing
+    slider_update_timer_ = new QTimer(this);
+    slider_update_timer_->setSingleShot(true);
+    slider_update_timer_->setInterval(100); // 100ms debounce
+    connect(slider_update_timer_, &QTimer::timeout, this, &CustomPlugin::sendSliderJointState);
 
     // Start the ROS2 node in a separate thread
     ros_thread_ = std::thread([this]() { rclcpp::spin(node_); });
@@ -288,9 +362,9 @@ rviz_teach_plugin::CustomPlugin::CustomPlugin(QWidget *parent)
     // Timer for polling joint states
     poll_timer_ = new QTimer(this);
     connect(poll_timer_, &QTimer::timeout, this, [this]() {
-        fetchAndPrintJointStates();
+        updateJointStateDisplay();
     });
-    poll_timer_->start(500);  // Poll every 500ms
+    poll_timer_->start(1000);  // Reduce to 1 second to avoid conflicts
 }
 
 // Destructor
@@ -816,7 +890,6 @@ void rviz_teach_plugin::CustomPlugin::onMoveToHome()
     );
 }
 
-
 void rviz_teach_plugin::CustomPlugin::setStepSize(int index)
 {
     // Get the step size dropdown that triggered this function
@@ -1202,54 +1275,64 @@ bool rviz_teach_plugin::CustomPlugin::pointExists(const QString &name)
 // Fetch and print joint states, and update sliders and labels
 void rviz_teach_plugin::CustomPlugin::fetchAndPrintJointStates()
 {
+    // Rename this function to avoid confusion
+    updateJointStateDisplay();
+}
+
+void rviz_teach_plugin::CustomPlugin::updateJointStateDisplay()
+{
     if (!latest_joint_state_) return;
 
-    //qDebug() << "[JointState Ausgabe]";
+    // Don't update sliders if user is currently interacting with them
+    for (const auto& pair : joint_slider_map_) {
+        QSlider* slider = pair.second;
+        if (slider && slider->isSliderDown()) {
+            return; // User is actively using a slider, skip update
+        }
+    }
+
     for (size_t i = 0; i < latest_joint_state_->name.size(); ++i)
     {
         const std::string &joint_name = latest_joint_state_->name[i];
         double position_rad = latest_joint_state_->position[i];
 
-        // Convert joint name (e.g., "joint_1") to match the slider naming convention
-        QString qt_name = QString::fromStdString(joint_name);  // e.g., "joint1", "joint2", etc.
+        QString qt_name = QString::fromStdString(joint_name);
 
         double value = 0.0;
         QString value_str;
 
         if (qt_name == "joint_plate") {
-            // Special handling for the gripper (convert radians to percentage)
             double mm = position_rad * 1000.0;
             int percent = static_cast<int>(std::round(mm / 10.0 * 100.0));
             percent = std::clamp(percent, 0, 100);
             value_str = QString::number(percent) + "%";
             value = percent;
         } else {
-            // Convert radians to degrees for joint angles
             value = position_rad * 180.0 / M_PI;
             value_str = QString::number(value, 'f', 1) + "°";
         }
 
-        //qDebug() << qt_name << ": " << value_str;
-
-        // Update the corresponding slider and label
+        // Update the corresponding slider and label only if not being actively used
         if (joint_slider_map_.find(qt_name) != joint_slider_map_.end()) {
             QSlider* slider = joint_slider_map_[qt_name];
             QLabel* label = joint_label_map_[qt_name];
 
             int slider_val = static_cast<int>(std::round(value));
 
-            if (slider) {
+            if (slider && !slider->isSliderDown()) {
                 slider->blockSignals(true);
                 slider->setValue(slider_val);
                 slider->blockSignals(false);
             }
 
-            if (label) {
+            // Always update label if not actively being changed by user
+            if (label && (!slider || !slider->isSliderDown())) {
                 label->setText(value_str);
             }
         }
     }
 }
+
 void rviz_teach_plugin::CustomPlugin::fetchCurrentPose()
 {
     try {
