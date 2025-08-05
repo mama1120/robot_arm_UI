@@ -1,3 +1,10 @@
+/**
+ * 
+ * This program shows how to control a robot arm using MoveIt's MoveGroupInterface by setting
+ * specific joint angles directly. It moves the robot arm to a hardcoded set of joint positions
+ * and controls the gripper, demonstrating basic forward kinematic control without trajectory planning.
+ */
+
 #include <moveit/move_group_interface/move_group_interface.h>
 #include <rclcpp/rclcpp.hpp>
 #include <vector>

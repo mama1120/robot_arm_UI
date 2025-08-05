@@ -1,3 +1,10 @@
+/**
+ * 
+ * This program demonstrates inverse kinematics with emphasis on wrist control and end-effector orientation.
+ * It generates random target poses within a cylindrical workspace and tests the robot's ability to reach
+ * them with two movements. First position and then adjusting the wrist to achieve the desired orientation.
+ */
+
 #include <moveit/move_group_interface/move_group_interface.h>
 #include <moveit/planning_scene_interface/planning_scene_interface.h>
 #include <rclcpp/rclcpp.hpp>

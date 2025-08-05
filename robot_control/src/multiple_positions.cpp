@@ -1,3 +1,9 @@
+/**
+ * This program moves the robot arm through a sequence of predefined positions including home,
+ * picking, and placing positions. It demonstrates basic pick-and-place operations with approach
+ * movements and includes tolerance checking for precise positioning verification.
+ */
+
 #include <moveit/move_group_interface/move_group_interface.h>
 #include <moveit/planning_scene_interface/planning_scene_interface.h>
 #include <rclcpp/rclcpp.hpp>

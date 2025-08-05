@@ -1,3 +1,11 @@
+/**
+ * 
+ * This program provides a simple ROS2 service that moves the robot arm to a predefined home position
+ * using MoveIt's named target functionality. It's useful for resetting the robot to a known safe
+ * configuration and can be called remotely through the ROS2 service interface.
+ * This node is used by the UI to reset the robot arm to its home position.
+ */
+
 #include <rclcpp/rclcpp.hpp>
 #include <moveit/move_group_interface/move_group_interface.h>
 #include <std_srvs/srv/set_bool.hpp>  // Standard SetBool service

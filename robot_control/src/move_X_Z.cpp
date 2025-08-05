@@ -1,3 +1,9 @@
+/**
+ * This program provides a ROS2 service that accepts linear movement commands and moves the robot
+ * end-effector in straight lines within the X-Z plane. It uses MoveIt for motion planning and
+ * is particularly useful for applications requiring precise linear movements.
+ */
+
 #include <moveit/move_group_interface/move_group_interface.h>
 #include <rclcpp/rclcpp.hpp>
 #include <tf2_ros/buffer.h>

@@ -1,3 +1,12 @@
+/**
+ *
+ * This program demonstrates inverse kinematics using MoveIt to generate random target positions
+ * within a spherical workspace and move the robot arm to pick up balls. It includes collision detection,
+ * approach planning, gripper control, and coordinate transformations for realistic pick-and-place operations.
+ * The inverse kinematic might not find a solution if it the movement is not possible with four joints, if
+ * the target position is out of reach, or if there is no solution without a collision.
+ */
+
 #include <moveit/move_group_interface/move_group_interface.h>
 #include <moveit/planning_scene_interface/planning_scene_interface.h>
 #include <rclcpp/rclcpp.hpp>

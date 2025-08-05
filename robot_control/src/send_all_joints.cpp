@@ -1,3 +1,10 @@
+/**
+ * This program listens to MoveIt trajectory plans and current joint states, then transmits
+ * the joint position data over TCP to external clients. It's designed for real-time monitoring
+ * and external control systems that need access to robot joint information over network connections.
+ * Currently not used. It was originally intended to communicate to the raspberry pi via TCP.
+ */
+
 #include <rclcpp/rclcpp.hpp>
 #include <moveit_msgs/msg/display_trajectory.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>

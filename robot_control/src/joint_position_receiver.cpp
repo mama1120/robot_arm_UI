@@ -1,3 +1,11 @@
+/**
+ * This program creates a TCP server that listens for incoming joint position data from external
+ * clients and republishes it as ROS2 String messages. It's designed for network-based robot
+ * control where joint positions are sent over TCP/IP and need to be integrated into the ROS2 ecosystem.
+ * 
+ * Currently not used. It was originally intended to communicate to the raspberry pi via TCP.
+ */
+
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/string.hpp"
 #include <string>

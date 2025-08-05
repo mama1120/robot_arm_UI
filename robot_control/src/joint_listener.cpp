@@ -1,3 +1,9 @@
+/**
+ * This program creates a ROS2 node that subscribes to target joint state messages and uses MoveIt
+ * to plan and execute robot arm movements. It also provides gripper control functionality and
+ * publishes execution status feedback, making it suitable for remote robot control applications.
+ */
+
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
 #include <moveit/move_group_interface/move_group_interface.h>

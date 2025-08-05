@@ -1,3 +1,9 @@
+/**
+ * This program loads a sequence of joint states from a JSON file and executes them sequentially
+ * on the robot arm with gripper control. The json file can be created with the UI tool in 
+ * rviz. Simply create a sequence and save it as a JSON file.
+ */
+
 #include <moveit/move_group_interface/move_group_interface.h>
 #include <rclcpp/rclcpp.hpp>
 #include <vector>

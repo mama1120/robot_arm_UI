@@ -1,3 +1,9 @@
+/**
+ * This program demonstrates various robot arm movements including named target positions,
+ * Cartesian pose movements, and joint space planning. It showcases different MoveIt planning
+ * algorithms and execution strategies for both the robot arm and gripper control.
+ */
+
 #include <memory>
 #include <rclcpp/rclcpp.hpp>
 #include <moveit/move_group_interface/move_group_interface.h>

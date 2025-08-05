@@ -1,3 +1,11 @@
+/**
+ * 
+ * This program provides a simple ROS2 node, which listens for service requests to move the robot arm to a specified position.
+ * It uses MoveIt's MoveGroupInterface to plan and execute the movement, allowing for precise control
+ * of the robot arm's end-effector position in 3D space. Example service call:
+ * ros2 service call /move_to_pose rviz_services/srv/MoveToPose "{0.3, y: 0.0, z: 0.4}"
+ */
+
 #include <moveit/move_group_interface/move_group_interface.h>
 #include <rclcpp/rclcpp.hpp>
 #include <memory>
@@ -36,7 +44,7 @@ private:
     move_group_->setPlannerId("RRTConnectConfigDefault");
     move_group_->setPlanningTime(15.0);
     move_group_->setNumPlanningAttempts(20);
-    move_group_->setGoalPositionTolerance(0.01);
+    move_group_->setGoalPositionTolerance(0.001);
 
     // Create joint state subscriber to get current joint values
     joint_state_sub_ = this->create_subscription<sensor_msgs::msg::JointState>(
@@ -102,4 +110,3 @@ int main(int argc, char** argv) {
   rclcpp::shutdown();
   return 0;
 }
-//ros2 service call /move_to_pose rviz_services/srv/MoveToPose "{x: 0.3, y: 0.0, z: 0.4, theta: 55.0, apply_theta: true}"
