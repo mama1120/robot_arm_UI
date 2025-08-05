@@ -21,6 +21,7 @@ Before you begin, ensure you have the following installed:
 - ROS2 Humble
 - MoveIt2 Humble
 - Colcon build tool
+- nlohmann-json3-dev
 
 ## Setup Instructions
 

@@ -14,6 +14,8 @@ find_package(moveit_visual_tools REQUIRED)
 find_package(example_interfaces REQUIRED)
 find_package(rviz_services REQUIRED)
 find_package(control_msgs REQUIRED)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(nlohmann_json REQUIRED nlohmann_json)
 
 
 # Include directories
@@ -97,6 +99,14 @@ ament_target_dependencies(
   "rclcpp"
   example_interfaces
 )
+
+add_executable(json_trajectory_executor src/json_trajectory_executor.cpp)
+ament_target_dependencies(json_trajectory_executor rclcpp sensor_msgs moveit_ros_planning_interface)
+target_include_directories(json_trajectory_executor PRIVATE ${nlohmann_json_INCLUDE_DIRS})
+target_link_libraries(json_trajectory_executor ${nlohmann_json_LIBRARIES})
+
+install(TARGETS json_trajectory_executor
+  DESTINATION lib/${PROJECT_NAME})
 
 target_link_libraries(move_X_Z
   rviz_services::rviz_services__rosidl_typesupport_cpp

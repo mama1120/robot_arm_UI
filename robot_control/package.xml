@@ -12,6 +12,7 @@
   <depend>moveit_ros_planning_interface</depend>
   <depend>rviz_services</depend>
   <depend>control_msgs</depend>
+  <depend>nlohmann-json-dev</depend>
   <member_of_group>rosidl_interface_packages</member_of_group>
   <depend>rclcpp</depend>
   <build_depend>sensor_msgs</build_depend>
