@@ -83,6 +83,7 @@ To run the demo application:
    ```bash
    ros2 run robot_control ik_demo
    ```
+**NOTE:** The inverse kinematic might fail sometimes, either due to a possible collision with the created object, or because no solution was found.
 
 ![Inverse Kinematics Demo](readme_assests/ik_demo.gif)
 
