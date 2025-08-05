@@ -48,8 +48,21 @@ void control_gripper(moveit::planning_interface::MoveGroupInterface& move_group,
                      const std::vector<double>& gripper_position,
                      const std::string& logger_name,
                      const std::string& position_name) {
-    // Set the target joint positions for the gripper
-    move_group.setJointValueTarget(gripper_position);
+    
+    RCLCPP_INFO(rclcpp::get_logger(logger_name), "Setting gripper to position: %.6f for '%s'", 
+                gripper_position[0], position_name.c_str());
+    
+    // The gripper has 4 joints: joint_finger1, joint_finger2, joint_finger3, joint_plate
+    // Set all gripper joints to the same value (assuming symmetric gripper)
+    std::vector<double> all_gripper_positions = {
+        gripper_position[0],  // joint_finger1
+        gripper_position[0],  // joint_finger2  
+        gripper_position[0],  // joint_finger3
+        gripper_position[0]   // joint_plate
+    };
+    
+    // Set the target joint positions for all gripper joints
+    move_group.setJointValueTarget(all_gripper_positions);
 
     // Plan and execute the movement
     bool success = static_cast<bool>(move_group.move());
@@ -118,6 +131,9 @@ void execute_trajectory(moveit::planning_interface::MoveGroupInterface& move_gro
         // Prepare gripper position
         std::vector<double> gripper_position = {state.gripper};
 
+        RCLCPP_INFO(rclcpp::get_logger(logger_name), "Position '%s': arm joints=[%.3f, %.3f, %.3f, %.3f], gripper=%.6f", 
+                    state.name.c_str(), state.joint1, state.joint2, state.joint3, state.joint4, state.gripper);
+
         // Move robot arm to target position
         RCLCPP_INFO(rclcpp::get_logger(logger_name), "Moving robot arm to position '%s'...", state.name.c_str());
         move_to_joint_positions(move_group_robot_arm, arm_joint_positions, logger_name, state.name);
@@ -174,6 +190,17 @@ int main(int argc, char* argv[]) {
 
         // Create the MoveIt MoveGroup Interface for the hand (gripper)
         auto move_group_hand = std::make_shared<MoveGroupInterface>(node, "hand");
+        
+        // Add diagnostic information about the gripper
+        RCLCPP_INFO(node->get_logger(), "Gripper group info:");
+        RCLCPP_INFO(node->get_logger(), "  Planning frame: %s", move_group_hand->getPlanningFrame().c_str());
+        RCLCPP_INFO(node->get_logger(), "  End effector link: %s", move_group_hand->getEndEffectorLink().c_str());
+        
+        std::vector<std::string> joint_names = move_group_hand->getJointNames();
+        RCLCPP_INFO(node->get_logger(), "  Joint names (%zu joints):", joint_names.size());
+        for (size_t i = 0; i < joint_names.size(); ++i) {
+            RCLCPP_INFO(node->get_logger(), "    [%zu]: %s", i, joint_names[i].c_str());
+        }
 
         // Execute the trajectory
         execute_trajectory(*move_group_robot_arm, *move_group_hand, joint_states, "json_trajectory_executor");
