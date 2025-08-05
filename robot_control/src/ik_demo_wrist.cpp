@@ -10,7 +10,7 @@
 // Constants with corrected orientation
 constexpr double MIN_RADIUS = 0.35;
 constexpr double MAX_RADIUS = 0.50;
-constexpr double BALL_RADIUS = 0.03;
+constexpr double BALL_RADIUS = 0.015;
 constexpr double APPROACH_HEIGHT = 0.08;
 // Corrected 90° rotation about Y-axis (positive direction)
 const std::vector<double> BALL_ORIENTATION = {0.707, 0.0, 0.707, 0.0};  // w, x, y, z
