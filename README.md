@@ -4,6 +4,14 @@ This project provides an environment for simulating and controlling a robotic ar
 
 ---
 
+## UI Demo
+
+![Robot MoveIt UI demo](readme_assests/UI_demo.gif)
+
+To connect to the robot, consult the following repo: https://github.com/mama1120/rpi_ros_can_module
+
+---
+
 ## Development Environment
 
 - **Operating System**: Ubuntu 22.04.5 LTS
@@ -69,22 +77,5 @@ Once the workspace has been built:
    ```
    This should open up RViz, and you should see the robot model. You can interact with MoveIt2, and the robot should move in the visualization.
 
-### 4. Running the Demo
-
-To run the demo application:
-
-1. **Open a new terminal**, navigate to the workspace and source it:
-   ```bash
-   cd ~/robot_ws
-   source install/setup.bash
-   ```
-
-2. **Run the demo**:
-   ```bash
-   ros2 run robot_control ik_demo
-   ```
-**NOTE:** The inverse kinematic might fail sometimes, either due to a possible collision with the created object, or because no solution was found.
-
-![Inverse Kinematics Demo](readme_assests/ik_demo.gif)
 
 
